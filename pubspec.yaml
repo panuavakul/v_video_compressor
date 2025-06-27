@@ -48,10 +48,7 @@ flutter:
 topics:
   - video
   - compression
-  - multimedia
-  - no-ffmpeg
   - thumbnail
-  - media
   - video-processing
   - compression-library
 
