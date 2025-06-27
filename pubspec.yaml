@@ -43,8 +43,6 @@ flutter:
       ios:
         pluginClass: VVideoCompressorPlugin
 
-# Publish configuration
-publish_to: https://pub.dev
 
 # Additional metadata for pub.dev
 topics:
