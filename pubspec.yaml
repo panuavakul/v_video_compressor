@@ -1,10 +1,9 @@
 name: v_video_compressor
-description: "Professional Flutter plugin for high-quality video compression with real-time progress tracking, advanced customization, thumbnail generation, and comprehensive debugging capabilities."
-version: 1.0.0
+description: "Professional Flutter plugin for high-quality video compression with real-time progress tracking and thumbnail generation."
+version: 1.0.1
 homepage: https://github.com/v-chat-sdk/v_video_compressor
 repository: https://github.com/v-chat-sdk/v_video_compressor
 issue_tracker: https://github.com/v-chat-sdk/v_video_compressor/issues
-documentation: https://pub.dev/documentation/v_video_compressor
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
@@ -42,7 +41,6 @@ flutter:
         pluginClass: VVideoCompressorPlugin
       ios:
         pluginClass: VVideoCompressorPlugin
-
 
 # Additional metadata for pub.dev
 topics:
