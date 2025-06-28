@@ -7,6 +7,7 @@
 A professional Flutter plugin for **high-quality video compression** with real-time progress tracking, advanced customization, and comprehensive debugging capabilities.
 
 ## ✨ **Key Features**
+
 - ⛔ **NO ffmpeg** this package use native api for compress android **media3** for android and **AVFoundation** for ios
 - 🎬 **Professional Video Compression** - Multiple quality levels with advanced customization
 - 📊 **Real-Time Progress Tracking** - Smooth progress updates with hybrid estimation algorithm
@@ -14,12 +15,10 @@ A professional Flutter plugin for **high-quality video compression** with real-t
 - 🖼️ **Thumbnail Generation** - Extract high-quality thumbnails at any timestamp
 - 📱 **Cross-Platform** - Full Android & iOS support with native performance
 - 🚀 **Batch Processing** - Compress multiple videos with overall progress
-- 📝 **Small apk size** -  very high speed video compress native side kotlin and swift
+- 📝 **Small apk size** - very high speed video compress native side kotlin and swift
 - ⛔ **Cancellation Support** - Cancel operations anytime with automatic cleanup
 - 📝 **Comprehensive Logging** - Production-ready error tracking and debugging
 - 🧪 **Thoroughly Tested** - 95%+ test coverage with mock implementations
-
-<img width="491" alt="Image" src="https://github.com/user-attachments/assets/dd4957bc-109d-4aec-8ac5-69a70b225d60" />
 
 ## 🎯 **Philosophy**
 
@@ -28,7 +27,7 @@ This plugin **focuses exclusively on video compression** - it does what it does 
 ## 📱 **Platform Support**
 
 | Platform    | Support             | Minimum Version        | Notes                           |
-| ----------- | ------------------- |------------------------| ------------------------------- |
+| ----------- | ------------------- | ---------------------- | ------------------------------- |
 | **Android** | ✅ **Full Support** | API 21+ (Android 5.0+) | Hardware acceleration available |
 | **iOS**     | ✅ **Full Support** | iOS 13.0+              | Hardware acceleration available |
 

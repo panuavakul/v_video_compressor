@@ -6,78 +6,19 @@
 /// - Advanced customization options for professional use
 /// - Thumbnail generation from video files
 /// - Batch compression capabilities
-/// - Comprehensive error handling and logging
+/// - Comprehensive error handling and configurable logging
 ///
 /// Version: 1.0.0
 /// Author: V Chat SDK Team
 /// License: MIT
 library;
 
-import 'dart:developer' as developer;
+import 'src/v_video_logger.dart';
 import 'v_video_compressor_platform_interface.dart';
 
-/// Internal logging utility for debugging and error tracking
-class _VVideoLogger {
-  static const String _tag = 'VVideoCompressor';
-
-  /// Log info messages
-  static void info(String message, [Object? error, StackTrace? stackTrace]) {
-    developer.log(
-      message,
-      name: _tag,
-      level: 800, // INFO level
-      error: error,
-      stackTrace: stackTrace,
-    );
-  }
-
-  /// Log warning messages
-  static void warning(String message, [Object? error, StackTrace? stackTrace]) {
-    developer.log(
-      message,
-      name: _tag,
-      level: 900, // WARNING level
-      error: error,
-      stackTrace: stackTrace,
-    );
-  }
-
-  /// Log error messages with full context
-  static void error(String message, [Object? error, StackTrace? stackTrace]) {
-    developer.log(
-      message,
-      name: _tag,
-      level: 1000, // ERROR level
-      error: error,
-      stackTrace: stackTrace,
-    );
-  }
-
-  /// Log method calls for debugging
-  static void methodCall(String methodName, Map<String, dynamic>? params) {
-    final paramsStr =
-        params?.entries.map((e) => '${e.key}: ${e.value}').join(', ') ??
-            'no params';
-    info('Method: $methodName($paramsStr)');
-  }
-
-  /// Log compression progress
-  static void progress(String operation, double progress, [String? details]) {
-    final progressPercent = (progress * 100).toStringAsFixed(1);
-    final message = details != null
-        ? '$operation: $progressPercent% - $details'
-        : '$operation: $progressPercent%';
-    info(message);
-  }
-
-  /// Log successful operations
-  static void success(String operation, [Map<String, dynamic>? details]) {
-    final detailsStr =
-        details?.entries.map((e) => '${e.key}: ${e.value}').join(', ') ?? '';
-    info(
-        '✅ $operation completed successfully${detailsStr.isNotEmpty ? ' - $detailsStr' : ''}');
-  }
-}
+// Export all public APIs
+export 'src/v_video_logger.dart' show VVideoLogConfig, VVideoLogLevel;
+export 'src/v_video_models.dart';
 
 /// Compression quality levels
 enum VVideoCompressQuality {
@@ -799,23 +740,58 @@ class VVideoThumbnailResult {
 /// - Multiple quality presets and advanced customization
 /// - Thumbnail generation at specific timestamps
 /// - Batch compression with progress tracking
-/// - Comprehensive error handling and logging
+/// - Comprehensive error handling and configurable logging
 /// - Automatic cleanup and resource management
 class VVideoCompressor {
+  /// Configure logging for the V Video Compressor
+  ///
+  /// This method allows you to configure how the plugin logs information:
+  /// - Enable/disable logging entirely
+  /// - Set log levels (none, error, warning, info, debug, verbose)
+  /// - Control what types of logs are shown
+  /// - Use console output or structured logging
+  ///
+  /// Example configurations:
+  /// ```dart
+  /// // Production: minimal logging
+  /// VVideoCompressor.configureLogging(VVideoLogConfig.production());
+  ///
+  /// // Development: verbose logging
+  /// VVideoCompressor.configureLogging(VVideoLogConfig.development());
+  ///
+  /// // Custom configuration
+  /// VVideoCompressor.configureLogging(VVideoLogConfig(
+  ///   enabled: true,
+  ///   level: VVideoLogLevel.info,
+  ///   showProgress: true,
+  ///   showParameters: true,
+  /// ));
+  ///
+  /// // Disable all logging
+  /// VVideoCompressor.configureLogging(VVideoLogConfig.disabled());
+  /// ```
+  static void configureLogging(VVideoLogConfig config) {
+    VVideoLogger.configure(config);
+    VVideoLogger.info('Logging configured with level: ${config.level.name}');
+  }
+
+  /// Get current logging configuration
+  static VVideoLogConfig get loggingConfig => VVideoLogger.config;
+
   /// Get platform version (for testing and debugging)
   ///
   /// Returns the platform version string or null if unavailable.
   /// This method is primarily used for testing and debugging purposes.
   Future<String?> getPlatformVersion() async {
     try {
-      _VVideoLogger.methodCall('getPlatformVersion', null);
+      VVideoLogger.methodCall('getPlatformVersion', null);
       final version =
           await VVideoCompressorPlatform.instance.getPlatformVersion();
-      _VVideoLogger.success(
+      VVideoLogger.success(
           'getPlatformVersion', {'version': version ?? 'unknown'});
       return version;
     } catch (error, stackTrace) {
-      _VVideoLogger.error('Failed to get platform version', error, stackTrace);
+      VVideoLogger.error('Failed to get platform version', error, stackTrace);
       return null;
     }
   }
@@ -840,10 +816,10 @@ class VVideoCompressor {
   /// ```
   Future<VVideoInfo?> getVideoInfo(String videoPath) async {
     try {
-      _VVideoLogger.methodCall('getVideoInfo', {'videoPath': videoPath});
+      VVideoLogger.methodCall('getVideoInfo', {'videoPath': videoPath});
 
       if (videoPath.isEmpty) {
-        _VVideoLogger.warning('Empty video path provided to getVideoInfo');
+        VVideoLogger.warning('Empty video path provided to getVideoInfo');
         return null;
       }
 
@@ -851,20 +827,20 @@ class VVideoCompressor {
           await VVideoCompressorPlatform.instance.getVideoInfo(videoPath);
 
       if (info != null) {
-        _VVideoLogger.success('getVideoInfo', {
+        VVideoLogger.success('getVideoInfo', {
           'name': info.name,
           'duration': info.durationFormatted,
           'size': info.fileSizeFormatted,
           'resolution': '${info.width}x${info.height}',
         });
       } else {
-        _VVideoLogger.warning(
+        VVideoLogger.warning(
             'Failed to get video info - file may be invalid or inaccessible');
       }
 
       return info;
     } catch (error, stackTrace) {
-      _VVideoLogger.error(
+      VVideoLogger.error(
           'Failed to get video info for path: $videoPath', error, stackTrace);
       return null;
     }
@@ -898,14 +874,14 @@ class VVideoCompressor {
     VVideoAdvancedConfig? advanced,
   }) async {
     try {
-      _VVideoLogger.methodCall('getCompressionEstimate', {
+      VVideoLogger.methodCall('getCompressionEstimate', {
         'videoPath': videoPath,
         'quality': quality.value,
         'hasAdvanced': advanced != null,
       });
 
       if (videoPath.isEmpty) {
-        _VVideoLogger.warning(
+        VVideoLogger.warning(
             'Empty video path provided to getCompressionEstimate');
         return null;
       }
@@ -918,20 +894,20 @@ class VVideoCompressor {
       );
 
       if (estimate != null) {
-        _VVideoLogger.success('getCompressionEstimate', {
+        VVideoLogger.success('getCompressionEstimate', {
           'estimatedSize': estimate.estimatedSizeFormatted,
           'compressionRatio':
               '${(estimate.compressionRatio * 100).toStringAsFixed(1)}%',
           'bitrate': '${estimate.bitrateMbps.toStringAsFixed(2)} Mbps',
         });
       } else {
-        _VVideoLogger.warning(
+        VVideoLogger.warning(
             'Failed to get compression estimate - video may be invalid');
       }
 
       return estimate;
     } catch (error, stackTrace) {
-      _VVideoLogger.error('Failed to get compression estimate for: $videoPath',
+      VVideoLogger.error('Failed to get compression estimate for: $videoPath',
           error, stackTrace);
       return null;
     }
@@ -970,7 +946,7 @@ class VVideoCompressor {
     void Function(double progress)? onProgress,
   }) async {
     try {
-      _VVideoLogger.methodCall('compressVideo', {
+      VVideoLogger.methodCall('compressVideo', {
         'videoPath': videoPath,
         'quality': config.quality.value,
         'hasAdvanced': config.advanced != null,
@@ -978,16 +954,16 @@ class VVideoCompressor {
       });
 
       if (videoPath.isEmpty) {
-        _VVideoLogger.error('Empty video path provided to compressVideo');
+        VVideoLogger.error('Empty video path provided to compressVideo');
         return null;
       }
 
       if (!config.isValid()) {
-        _VVideoLogger.error('Invalid compression configuration provided');
+        VVideoLogger.error('Invalid compression configuration provided');
         return null;
       }
 
-      _VVideoLogger.info('Starting video compression...');
+      VVideoLogger.info('Starting video compression...');
       final startTime = DateTime.now();
 
       final result = await VVideoCompressorPlatform.instance.compressVideo(
@@ -995,7 +971,7 @@ class VVideoCompressor {
         config,
         onProgress: onProgress != null
             ? (progress) {
-                _VVideoLogger.progress('Compression', progress);
+                VVideoLogger.progress('Compression', progress);
                 onProgress(progress);
               }
             : null,
@@ -1005,7 +981,7 @@ class VVideoCompressor {
         final endTime = DateTime.now();
         final totalTime = endTime.difference(startTime);
 
-        _VVideoLogger.success('compressVideo', {
+        VVideoLogger.success('compressVideo', {
           'originalSize': result.originalSizeFormatted,
           'compressedSize': result.compressedSizeFormatted,
           'spaceSaved': result.spaceSavedFormatted,
@@ -1014,12 +990,12 @@ class VVideoCompressor {
           'totalTime': '${totalTime.inSeconds}s',
         });
       } else {
-        _VVideoLogger.error('Compression failed - no result returned');
+        VVideoLogger.error('Compression failed - no result returned');
       }
 
       return result;
     } catch (error, stackTrace) {
-      _VVideoLogger.error(
+      VVideoLogger.error(
           'Video compression failed for: $videoPath', error, stackTrace);
       return null;
     }
@@ -1057,25 +1033,25 @@ class VVideoCompressor {
     void Function(double progress, int currentIndex, int total)? onProgress,
   }) async {
     try {
-      _VVideoLogger.methodCall('compressVideos', {
+      VVideoLogger.methodCall('compressVideos', {
         'videoCount': videoPaths.length,
         'quality': config.quality.value,
         'hasAdvanced': config.advanced != null,
       });
 
       if (videoPaths.isEmpty) {
-        _VVideoLogger.warning(
+        VVideoLogger.warning(
             'Empty video paths list provided to compressVideos');
         return [];
       }
 
       if (!config.isValid()) {
-        _VVideoLogger.error(
+        VVideoLogger.error(
             'Invalid compression configuration provided for batch compression');
         return [];
       }
 
-      _VVideoLogger.info(
+      VVideoLogger.info(
           'Starting batch compression of ${videoPaths.length} videos...');
       final startTime = DateTime.now();
 
@@ -1084,7 +1060,7 @@ class VVideoCompressor {
         config,
         onProgress: onProgress != null
             ? (progress, currentIndex, total) {
-                _VVideoLogger.progress('Batch compression', progress,
+                VVideoLogger.progress('Batch compression', progress,
                     'Video ${currentIndex + 1}/$total');
                 onProgress(progress, currentIndex, total);
               }
@@ -1094,7 +1070,7 @@ class VVideoCompressor {
       final endTime = DateTime.now();
       final totalTime = endTime.difference(startTime);
 
-      _VVideoLogger.success('compressVideos', {
+      VVideoLogger.success('compressVideos', {
         'totalVideos': videoPaths.length,
         'successfulCompressions': results.length,
         'totalTime': '${totalTime.inSeconds}s',
@@ -1104,7 +1080,7 @@ class VVideoCompressor {
 
       return results;
     } catch (error, stackTrace) {
-      _VVideoLogger.error('Batch compression failed', error, stackTrace);
+      VVideoLogger.error('Batch compression failed', error, stackTrace);
       return [];
     }
   }
@@ -1126,13 +1102,13 @@ class VVideoCompressor {
   /// ```
   Future<void> cancelCompression() async {
     try {
-      _VVideoLogger.methodCall('cancelCompression', null);
+      VVideoLogger.methodCall('cancelCompression', null);
 
       await VVideoCompressorPlatform.instance.cancelCompression();
 
-      _VVideoLogger.success('cancelCompression');
+      VVideoLogger.success('cancelCompression');
     } catch (error, stackTrace) {
-      _VVideoLogger.error('Failed to cancel compression', error, stackTrace);
+      VVideoLogger.error('Failed to cancel compression', error, stackTrace);
     }
   }
 
@@ -1151,15 +1127,15 @@ class VVideoCompressor {
   /// ```
   Future<bool> isCompressing() async {
     try {
-      _VVideoLogger.methodCall('isCompressing', null);
+      VVideoLogger.methodCall('isCompressing', null);
 
       final isActive = await VVideoCompressorPlatform.instance.isCompressing();
 
-      _VVideoLogger.info('Compression status: ${isActive ? 'active' : 'idle'}');
+      VVideoLogger.info('Compression status: ${isActive ? 'active' : 'idle'}');
 
       return isActive;
     } catch (error, stackTrace) {
-      _VVideoLogger.error(
+      VVideoLogger.error(
           'Failed to check compression status', error, stackTrace);
       return false;
     }
@@ -1199,7 +1175,7 @@ class VVideoCompressor {
     VVideoThumbnailConfig config,
   ) async {
     try {
-      _VVideoLogger.methodCall('getVideoThumbnail', {
+      VVideoLogger.methodCall('getVideoThumbnail', {
         'videoPath': videoPath,
         'timeMs': config.timeMs,
         'maxWidth': config.maxWidth,
@@ -1209,12 +1185,12 @@ class VVideoCompressor {
       });
 
       if (videoPath.isEmpty) {
-        _VVideoLogger.error('Empty video path provided to getVideoThumbnail');
+        VVideoLogger.error('Empty video path provided to getVideoThumbnail');
         return null;
       }
 
       if (!config.isValid()) {
-        _VVideoLogger.error('Invalid thumbnail configuration provided');
+        VVideoLogger.error('Invalid thumbnail configuration provided');
         return null;
       }
 
@@ -1224,7 +1200,7 @@ class VVideoCompressor {
       );
 
       if (result != null) {
-        _VVideoLogger.success('getVideoThumbnail', {
+        VVideoLogger.success('getVideoThumbnail', {
           'thumbnailPath': result.thumbnailPath,
           'dimensions': '${result.width}x${result.height}',
           'fileSize': result.fileSizeFormatted,
@@ -1232,13 +1208,13 @@ class VVideoCompressor {
           'timeMs': result.timeMs,
         });
       } else {
-        _VVideoLogger.error(
+        VVideoLogger.error(
             'Failed to generate thumbnail - video may be invalid or timestamp out of range');
       }
 
       return result;
     } catch (error, stackTrace) {
-      _VVideoLogger.error(
+      VVideoLogger.error(
           'Thumbnail generation failed for: $videoPath', error, stackTrace);
       return null;
     }
@@ -1274,19 +1250,19 @@ class VVideoCompressor {
     List<VVideoThumbnailConfig> configs,
   ) async {
     try {
-      _VVideoLogger.methodCall('getVideoThumbnails', {
+      VVideoLogger.methodCall('getVideoThumbnails', {
         'videoPath': videoPath,
         'configCount': configs.length,
         'timestamps': configs.map((c) => c.timeMs).toList(),
       });
 
       if (videoPath.isEmpty) {
-        _VVideoLogger.error('Empty video path provided to getVideoThumbnails');
+        VVideoLogger.error('Empty video path provided to getVideoThumbnails');
         return [];
       }
 
       if (configs.isEmpty) {
-        _VVideoLogger.warning(
+        VVideoLogger.warning(
             'Empty configs list provided to getVideoThumbnails');
         return [];
       }
@@ -1294,7 +1270,7 @@ class VVideoCompressor {
       // Validate all configurations
       for (int i = 0; i < configs.length; i++) {
         if (!configs[i].isValid()) {
-          _VVideoLogger.error('Invalid thumbnail configuration at index $i');
+          VVideoLogger.error('Invalid thumbnail configuration at index $i');
           return [];
         }
       }
@@ -1305,7 +1281,7 @@ class VVideoCompressor {
         configs,
       );
 
-      _VVideoLogger.success('getVideoThumbnails', {
+      VVideoLogger.success('getVideoThumbnails', {
         'requestedCount': configs.length,
         'generatedCount': results.length,
         'totalFileSize':
@@ -1314,7 +1290,7 @@ class VVideoCompressor {
 
       return results;
     } catch (error, stackTrace) {
-      _VVideoLogger.error('Batch thumbnail generation failed for: $videoPath',
+      VVideoLogger.error('Batch thumbnail generation failed for: $videoPath',
           error, stackTrace);
       return [];
     }
@@ -1346,15 +1322,15 @@ class VVideoCompressor {
   /// ```
   Future<void> cleanup() async {
     try {
-      _VVideoLogger.methodCall('cleanup', null);
-      _VVideoLogger.info('Starting comprehensive cleanup...');
+      VVideoLogger.methodCall('cleanup', null);
+      VVideoLogger.info('Starting comprehensive cleanup...');
 
       await VVideoCompressorPlatform.instance.cleanup();
 
-      _VVideoLogger.success(
+      VVideoLogger.success(
           'cleanup', {'operation': 'Complete cleanup finished'});
     } catch (error, stackTrace) {
-      _VVideoLogger.error('Cleanup failed', error, stackTrace);
+      VVideoLogger.error('Cleanup failed', error, stackTrace);
     }
   }
 
@@ -1392,18 +1368,18 @@ class VVideoCompressor {
     bool clearCache = true,
   }) async {
     try {
-      _VVideoLogger.methodCall('cleanupFiles', {
+      VVideoLogger.methodCall('cleanupFiles', {
         'deleteThumbnails': deleteThumbnails,
         'deleteCompressedVideos': deleteCompressedVideos,
         'clearCache': clearCache,
       });
 
       if (deleteCompressedVideos) {
-        _VVideoLogger.warning(
+        VVideoLogger.warning(
             '⚠️ Selective cleanup includes deleting compressed videos - this action is irreversible');
       }
 
-      _VVideoLogger.info('Starting selective cleanup...');
+      VVideoLogger.info('Starting selective cleanup...');
 
       await VVideoCompressorPlatform.instance.cleanupFiles(
         deleteThumbnails: deleteThumbnails,
@@ -1416,12 +1392,12 @@ class VVideoCompressor {
       if (deleteCompressedVideos) cleanupTypes.add('compressed videos');
       if (clearCache) cleanupTypes.add('cache');
 
-      _VVideoLogger.success('cleanupFiles', {
+      VVideoLogger.success('cleanupFiles', {
         'cleanedTypes': cleanupTypes.join(', '),
         'deletedCompressedVideos': deleteCompressedVideos,
       });
     } catch (error, stackTrace) {
-      _VVideoLogger.error('Selective cleanup failed', error, stackTrace);
+      VVideoLogger.error('Selective cleanup failed', error, stackTrace);
     }
   }
 }

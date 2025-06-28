@@ -4,7 +4,9 @@ import UIKit
 
 class VVideoCompressionEngine {
     
-    private static let AUDIO_BITRATE: Int = 96000
+    // Improved constants from iOS Quick Fix
+    private static let AUDIO_BITRATE: Int = 128000
+    private static let AUDIO_BITRATE_LOW: Int = 64000
     private static let DEFAULT_FRAME_RATE: Float = 30.0
     private static let PROGRESS_UPDATE_INTERVAL: TimeInterval = 0.1
     
@@ -60,16 +62,55 @@ class VVideoCompressionEngine {
     }
     
     func estimateCompressionSize(_ videoInfo: VVideoInfo, quality: VVideoCompressQuality, advanced: VVideoAdvancedConfig?) -> VVideoCompressionEstimate {
-        let originalSizeBytes = videoInfo.fileSizeBytes
-        let ratioCap: Float = quality == .high ? 0.65 : (quality == .medium ? 0.45 : 0.30)
-        let estimatedBytes = Int64(Float(originalSizeBytes) * ratioCap)
-        
+        // Improved estimation from iOS Quick Fix
+        let durationSeconds = Double(videoInfo.durationMillis) / 1000.0
+
+        // Get video bitrate
+        var videoBitrate = advanced?.videoBitrate ?? getDefaultBitrate(for: quality)
+
+        // Adjust for resolution change
+        if let customWidth = advanced?.customWidth,
+           let customHeight = advanced?.customHeight {
+            let originalPixels = videoInfo.width * videoInfo.height
+            let targetPixels = customWidth * customHeight
+            let pixelRatio = Float(targetPixels) / Float(originalPixels)
+            videoBitrate = Int(Float(videoBitrate) * pixelRatio * 1.1)
+        }
+
+        // Adjust for frame rate
+        if let frameRate = advanced?.reducedFrameRate {
+            let frameRateRatio = frameRate / 30.0
+            videoBitrate = Int(Float(videoBitrate) * Float(frameRateRatio))
+        }
+
+        // Audio bitrate
+        let audioBitrate = advanced?.removeAudio == true ? 0 :
+                          (advanced?.audioBitrate ?? Self.AUDIO_BITRATE)
+
+        // Calculate size
+        let totalBitrate = videoBitrate + audioBitrate
+        let estimatedBytes = Int64((Double(totalBitrate) * durationSeconds) / 8.0)
+
+        // Add 5% overhead
+        let finalEstimate = Int64(Double(estimatedBytes) * 1.05)
+
         return VVideoCompressionEstimate(
-            estimatedSizeBytes: estimatedBytes,
-            estimatedSizeFormatted: formatFileSize(estimatedBytes),
-            compressionRatio: ratioCap,
-            bitrateMbps: 2.0
+            estimatedSizeBytes: finalEstimate,
+            estimatedSizeFormatted: formatFileSize(finalEstimate),
+            compressionRatio: Float(finalEstimate) / Float(videoInfo.fileSizeBytes),
+            bitrateMbps: Float(videoBitrate) / 1000000.0
         )
+    }
+    
+    // iOS Quick Fix: Add default bitrate calculation
+    private func getDefaultBitrate(for quality: VVideoCompressQuality) -> Int {
+        switch quality {
+        case .high: return 3500000      // 3.5 Mbps
+        case .medium: return 1800000    // 1.8 Mbps
+        case .low: return 900000        // 900 kbps
+        case .veryLow: return 500000    // 500 kbps
+        case .ultraLow: return 350000   // 350 kbps
+        }
     }
     
     func compressVideo(_ videoInfo: VVideoInfo, config: VVideoCompressionConfig, callback: CompressionCallback) {
@@ -83,7 +124,9 @@ class VVideoCompressionEngine {
             return
         }
         
-        let asset = AVAsset(url: inputURL)
+        // iOS Quick Fix: Optimize asset loading
+        let options = [AVURLAssetPreferPreciseDurationAndTimingKey: false]
+        let asset = AVURLAsset(url: inputURL, options: options)
         let outputURL = createOutputFile(config.outputPath, videoInfo: videoInfo, quality: config.quality)
         
         print("VVideoCompressionEngine: FIXED ROTATION - Starting compression")
@@ -98,7 +141,19 @@ class VVideoCompressionEngine {
         self.exportSession = exportSession
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
+        
+        // iOS Quick Fix: Optimize export settings
         exportSession.shouldOptimizeForNetworkUse = true
+        exportSession.canPerformMultiplePassesOverSourceMediaData = true
+        
+        // iOS Quick Fix: Add metadata
+        var metadata = [AVMetadataItem]()
+        let item = AVMutableMetadataItem()
+        item.key = AVMetadataKey.commonKeyTitle as NSString
+        item.keySpace = .common
+        item.value = "Compressed with V Video Compressor" as NSString
+        metadata.append(item)
+        exportSession.metadata = metadata
         
         if needsAdvancedComposition(config: config) {
             print("VVideoCompressionEngine: Applying WORKING rotation")
@@ -107,6 +162,7 @@ class VVideoCompressionEngine {
         
         startProgressTracking(callback: callback)
         
+        // iOS Quick Fix: Background processing optimization
         exportSession.exportAsynchronously {
             DispatchQueue.main.async {
                 self.handleCompressionCompletion(
@@ -178,10 +234,17 @@ class VVideoCompressionEngine {
         
         layerInstruction.setTransform(transform, at: .zero)
         
+        // iOS Quick Fix: Improved color adjustments
         if let brightness = config.advanced?.brightness, brightness != 0.0 {
             let opacity = Float(max(0.1, min(1.0, 1.0 + brightness)))
             layerInstruction.setOpacity(opacity, at: .zero)
             print("VVideoCompressionEngine: Applied brightness: \(brightness)")
+        }
+        
+        // iOS Quick Fix: Add contrast and saturation support via Core Image (requires additional implementation)
+        if config.advanced?.contrast != nil || config.advanced?.saturation != nil {
+            // Note: Full implementation would require Core Image integration
+            print("VVideoCompressionEngine: Color adjustments (contrast/saturation) require Core Image - not fully implemented")
         }
         
         instruction.layerInstructions = [layerInstruction]
@@ -237,7 +300,7 @@ class VVideoCompressionEngine {
             
         case .failed:
             try? FileManager.default.removeItem(at: outputURL)
-            let errorMessage = exportSession.error?.localizedDescription ?? "Unknown error"
+            let errorMessage = getDetailedError(from: exportSession.error)
             print("VVideoCompressionEngine: Export failed: \(errorMessage)")
             callback.onError("Compression failed: \(errorMessage)")
             
@@ -323,10 +386,23 @@ class VVideoCompressionEngine {
         }
     }
     
+    // iOS Quick Fix: Add H.265 support check
+    private func isHEVCSupported() -> Bool {
+        if #available(iOS 11.0, *) {
+            return AVAssetExportSession.allExportPresets().contains(AVAssetExportPresetHEVCHighestQuality)
+        }
+        return false
+    }
+
     private func getExportPreset(for quality: VVideoCompressQuality, advanced: VVideoAdvancedConfig? = nil) -> String {
+        // iOS Quick Fix: Improved H.265 support
         if let videoCodec = advanced?.videoCodec, videoCodec == .h265 {
-            if #available(iOS 11.0, *) {
-                return AVAssetExportPresetHEVCHighestQuality
+            if isHEVCSupported() {
+                switch quality {
+                case .high: return AVAssetExportPresetHEVCHighestQuality
+                case .medium, .low: return AVAssetExportPresetHEVC1920x1080
+                case .veryLow, .ultraLow: return AVAssetExportPresetHEVC1920x1080
+                }
             }
         }
         
@@ -414,6 +490,32 @@ class VVideoCompressionEngine {
         return String(format: "%.1f MB", mb)
     }
     
+    // iOS Quick Fix: Better error handling
+    private func getDetailedError(from error: Error?) -> String {
+        guard let error = error as NSError? else {
+            return "Unknown error occurred"
+        }
+
+        switch error.code {
+        case AVError.Code.fileAlreadyExists.rawValue:
+            return "Output file already exists"
+        case AVError.Code.diskFull.rawValue:
+            return "Not enough storage space"
+        case AVError.Code.sessionNotRunning.rawValue:
+            return "Compression session failed to start"
+        case AVError.Code.deviceNotConnected.rawValue:
+            return "Required device not available"
+        case AVError.Code.noDataCaptured.rawValue:
+            return "No video data found"
+        case AVError.Code.fileFormatNotRecognized.rawValue:
+            return "Video format not supported"
+        case AVError.Code.contentIsProtected.rawValue:
+            return "Video is DRM protected"
+        default:
+            return error.localizedDescription
+        }
+    }
+
     private func createURL(from path: String) -> URL? {
         if path.hasPrefix("file://") {
             return URL(string: path)
