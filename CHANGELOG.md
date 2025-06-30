@@ -1,3 +1,34 @@
+## [1.0.3] - 2024-12-20 🔒 **Security & Permissions Hotfix**
+
+### 🛡️ **Permission Optimization**
+
+#### **Removed Unnecessary Permissions**
+
+- **Removed MANAGE_EXTERNAL_STORAGE**: This permission was not required for the plugin's core functionality
+  - The plugin only needs basic read/write access for video processing
+  - READ_EXTERNAL_STORAGE and WRITE_EXTERNAL_STORAGE (API ≤28) are sufficient
+  - This change improves Google Play Store compliance and reduces permission warnings
+  - No impact on functionality - all compression and thumbnail features work normally
+
+### 📋 **Technical Details**
+
+- **Android Manifest Cleanup**: Removed MANAGE_EXTERNAL_STORAGE permission declaration
+- **Maintained Compatibility**: All existing video compression and thumbnail generation functionality remains unchanged
+- **Google Play Compliance**: Reduces permission review requirements and improves app approval process
+
+### ✅ **What This Means for Developers**
+
+- **Easier App Review**: Your app will have fewer permission-related questions during Google Play review
+- **Better User Experience**: Users see fewer permission requests when installing your app
+- **Full Functionality**: All video compression features continue to work exactly as before
+- **No Code Changes Required**: Existing integration code remains unchanged
+
+### 🔧 **Migration**
+
+No migration required. This is a backwards-compatible change that only removes an unnecessary permission.
+
+---
+
 ## [1.0.2] - 2024-12-19 🚀 **Compression Engine Improvements**
 
 ### 🎯 **Major Performance & Quality Enhancements**
@@ -70,10 +101,6 @@ This release focuses on significant improvements to compression quality, file si
 
 No migration required. Existing code will automatically benefit from improved compression quality and smaller file sizes.
 
-### 📝 **Notes**
-
-- Advanced features like CRF, B-frames, and advanced color correction require external packages (FFmpeg integration)
-- Current implementation prioritizes stability and compatibility over advanced codec features
 - See `ADVANCED_FEATURES_SUPPORT.md` for detailed feature support matrix
 
 ---
