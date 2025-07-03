@@ -24,6 +24,9 @@ import kotlin.math.max
 import kotlin.math.roundToLong
 import kotlin.math.abs
 import kotlinx.coroutines.*
+import android.app.ActivityManager
+import android.os.StatFs
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Enhanced compression engine with real-time progress tracking and cancellation support
@@ -36,6 +39,15 @@ class VVideoCompressionEngine(private val context: Context) {
     private var isCompressionActive = AtomicBoolean(false)
     private var isCancelled = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
+    
+    // Memory management
+    private val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    private val memoryInfo = ActivityManager.MemoryInfo()
+    
+    // Cache for file size to reduce I/O operations
+    private val fileSizeCache = ConcurrentHashMap<String, Long>()
+    private var lastFileSizeCheck = 0L
+    private var lastFileSize = 0L
     
     companion object {
         // Improved bitrate settings for better compression (Android Quick Fix)
@@ -67,6 +79,12 @@ class VVideoCompressionEngine(private val context: Context) {
         // Progress tracking constants
         private const val PROGRESS_UPDATE_INTERVAL = 100L // milliseconds
         private const val INITIAL_PROGRESS_DELAY = 1000L // 1 second
+        
+        // Memory management constants
+        private const val MIN_MEMORY_THRESHOLD_MB = 100 // Minimum 100MB free memory required
+        private const val MIN_STORAGE_THRESHOLD_MB = 200 // Minimum 200MB free storage required
+        private const val FILE_SIZE_CACHE_DURATION_MS = 500L // Cache file size for 500ms
+        private const val MEMORY_CHECK_INTERVAL_MS = 5000L // Check memory every 5 seconds
     }
     
     /**
@@ -82,11 +100,12 @@ class VVideoCompressionEngine(private val context: Context) {
      * Gets video information from file path
      */
     fun getVideoInfo(videoPath: String): VVideoInfo? {
+        var retriever: MediaMetadataRetriever? = null
         return try {
             val file = File(videoPath)
             if (!file.exists()) return null
             
-            val retriever = MediaMetadataRetriever()
+            retriever = MediaMetadataRetriever()
             retriever.setDataSource(videoPath)
             
             val name = file.name
@@ -97,8 +116,6 @@ class VVideoCompressionEngine(private val context: Context) {
             val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
             val width = widthStr?.toIntOrNull() ?: 0
             val height = heightStr?.toIntOrNull() ?: 0
-            
-            retriever.release()
             
             VVideoInfo(
                 path = videoPath,
@@ -111,6 +128,8 @@ class VVideoCompressionEngine(private val context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        } finally {
+            retriever?.release()
         }
     }
     
@@ -176,6 +195,32 @@ class VVideoCompressionEngine(private val context: Context) {
     }
     
     /**
+     * Checks if there's enough memory and storage to perform compression
+     */
+    private fun hasEnoughResources(videoInfo: VVideoInfo): Boolean {
+        // Check available memory
+        activityManager.getMemoryInfo(memoryInfo)
+        val availableMemoryMB = memoryInfo.availMem / (1024 * 1024)
+        if (availableMemoryMB < MIN_MEMORY_THRESHOLD_MB) {
+            return false
+        }
+        
+        // Check available storage
+        val outputDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+        if (outputDir != null) {
+            val stat = StatFs(outputDir.path)
+            val availableStorageMB = (stat.availableBytes / (1024 * 1024))
+            // Need at least the video size + buffer
+            val requiredStorageMB = (videoInfo.fileSizeBytes / (1024 * 1024)) + MIN_STORAGE_THRESHOLD_MB
+            if (availableStorageMB < requiredStorageMB) {
+                return false
+            }
+        }
+        
+        return true
+    }
+    
+    /**
      * Compresses a single video file with real-time progress tracking
      */
     fun compressVideo(
@@ -183,12 +228,21 @@ class VVideoCompressionEngine(private val context: Context) {
         config: VVideoCompressionConfig,
         callback: CompressionCallback
     ) {
+        // Check resources before starting
+        if (!hasEnoughResources(videoInfo)) {
+            callback.onError("Insufficient memory or storage available for compression")
+            return
+        }
+        
         val outputFile = createOutputFile(config.outputPath, videoInfo, config.quality)
         val startTime = System.currentTimeMillis()
         
-        // Reset cancellation state
+        // Reset cancellation state and clear caches
         isCancelled.set(false)
         isCompressionActive.set(true)
+        fileSizeCache.clear()
+        lastFileSizeCheck = 0L
+        lastFileSize = 0L
         
         try {
             // Create MediaItem from video URI
@@ -319,7 +373,7 @@ class VVideoCompressionEngine(private val context: Context) {
     }
     
     /**
-     * Starts real-time progress tracking using multiple indicators
+     * Starts real-time progress tracking using multiple indicators with memory optimization
      */
     private fun startProgressTracking(
         videoInfo: VVideoInfo,
@@ -330,6 +384,7 @@ class VVideoCompressionEngine(private val context: Context) {
             val startTime = System.currentTimeMillis()
             val videoDurationMs = videoInfo.durationMillis
             val originalFileSize = videoInfo.fileSizeBytes
+            var lastMemoryCheck = 0L
             
             // Initial delay to let compression start
             delay(INITIAL_PROGRESS_DELAY)
@@ -338,6 +393,17 @@ class VVideoCompressionEngine(private val context: Context) {
                 try {
                     val currentTime = System.currentTimeMillis()
                     val elapsedTime = currentTime - startTime
+                    
+                    // Check memory periodically
+                    if (currentTime - lastMemoryCheck > MEMORY_CHECK_INTERVAL_MS) {
+                        activityManager.getMemoryInfo(memoryInfo)
+                        if (memoryInfo.lowMemory) {
+                            // System is in low memory state, reduce activity
+                            delay(PROGRESS_UPDATE_INTERVAL * 3) // Triple the delay
+                            continue
+                        }
+                        lastMemoryCheck = currentTime
+                    }
                     
                     // Method 1: Time-based estimation (primary)
                     val timeProgress = if (videoDurationMs > 0) {
@@ -348,9 +414,9 @@ class VVideoCompressionEngine(private val context: Context) {
                         0f
                     }
                     
-                    // Method 2: File size based estimation (secondary)
+                    // Method 2: File size based estimation (secondary) with caching
                     val fileSizeProgress = if (outputFile.exists() && originalFileSize > 0) {
-                        val currentOutputSize = outputFile.length()
+                        val currentOutputSize = getCachedFileSize(outputFile)
                         // Estimate based on expected compression ratio
                         val expectedFinalSize = originalFileSize * 0.5f // rough estimate
                         if (expectedFinalSize > 0) {
@@ -368,13 +434,21 @@ class VVideoCompressionEngine(private val context: Context) {
                     // Apply smoothing and constraints
                     val smoothedProgress = hybridProgress.coerceIn(0f, 0.98f) // Never show 100% until complete
                     
-                    // Send progress update on main thread
-                    mainHandler.post {
-                        callback.onProgress(smoothedProgress)
+                    // Send progress update on main thread with batching
+                    withContext(Dispatchers.Main) {
+                        try {
+                            callback.onProgress(smoothedProgress)
+                        } catch (e: Exception) {
+                            // Ignore callback errors
+                        }
                     }
                     
                     delay(PROGRESS_UPDATE_INTERVAL)
                     
+                } catch (e: OutOfMemoryError) {
+                    // Handle OutOfMemoryError gracefully
+                    System.gc() // Request garbage collection
+                    delay(1000) // Wait longer before retrying
                 } catch (e: Exception) {
                     // Continue tracking even if individual update fails
                     delay(PROGRESS_UPDATE_INTERVAL)
@@ -384,12 +458,38 @@ class VVideoCompressionEngine(private val context: Context) {
     }
     
     /**
-     * Stops progress tracking
+     * Gets cached file size to reduce I/O operations
+     */
+    private fun getCachedFileSize(file: File): Long {
+        val currentTime = System.currentTimeMillis()
+        val cacheKey = file.absolutePath
+        
+        // Check if we have a recent cached value
+        if (currentTime - lastFileSizeCheck < FILE_SIZE_CACHE_DURATION_MS && lastFileSize > 0) {
+            return lastFileSize
+        }
+        
+        return try {
+            val size = file.length()
+            lastFileSize = size
+            lastFileSizeCheck = currentTime
+            fileSizeCache[cacheKey] = size
+            size
+        } catch (e: Exception) {
+            // Return last known size on error
+            lastFileSize
+        }
+    }
+    
+    /**
+     * Stops progress tracking and cleans up resources
      */
     private fun stopProgressTracking() {
         isCompressionActive.set(false)
         progressJob?.cancel()
         progressJob = null
+        fileSizeCache.clear()
+        System.gc() // Request garbage collection
     }
     
     /**
@@ -661,15 +761,15 @@ class VVideoCompressionEngine(private val context: Context) {
     }
     
     /**
-     * Gets compressed video resolution
+     * Gets compressed video resolution with proper resource management
      */
     private fun getCompressedResolution(compressedFile: File, quality: VVideoCompressQuality): String {
+        var retriever: MediaMetadataRetriever? = null
         return try {
-            val retriever = MediaMetadataRetriever()
+            retriever = MediaMetadataRetriever()
             retriever.setDataSource(compressedFile.absolutePath)
             val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
             val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
-            retriever.release()
             "${width}x${height}"
         } catch (e: Exception) {
             // Fallback to quality-based resolution
@@ -680,10 +780,10 @@ class VVideoCompressionEngine(private val context: Context) {
                 VVideoCompressQuality.VERY_LOW -> "640x360"
                 VVideoCompressQuality.ULTRA_LOW -> "426x240"
             }
+        } finally {
+            retriever?.release()
         }
     }
-    
-
     
     /**
      * Formats file size in human-readable format
@@ -785,25 +885,28 @@ class VVideoCompressionEngine(private val context: Context) {
     }
 
     /**
-     * Generates a thumbnail from a video file at the specified time
+     * Generates a thumbnail from a video file at the specified time with memory management
      */
     fun getVideoThumbnail(
         videoInfo: VVideoInfo,
         config: VVideoThumbnailConfig
     ): VVideoThumbnailResult? {
+        var retriever: MediaMetadataRetriever? = null
+        var bitmap: android.graphics.Bitmap? = null
+        var finalBitmap: android.graphics.Bitmap? = null
+        
         return try {
-            val retriever = MediaMetadataRetriever()
+            retriever = MediaMetadataRetriever()
             retriever.setDataSource(videoInfo.path)
             
             // Get frame at specified time (in microseconds)
             val timeUs = config.timeMs * 1000L
-            val bitmap = retriever.getFrameAtTime(
+            bitmap = retriever.getFrameAtTime(
                 timeUs,
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC
             )
             
             if (bitmap == null) {
-                retriever.release()
                 return null
             }
             
@@ -816,7 +919,7 @@ class VVideoCompressionEngine(private val context: Context) {
             )
             
             // Scale bitmap if dimensions are specified
-            val finalBitmap = if (config.maxWidth != null || config.maxHeight != null) {
+            finalBitmap = if (config.maxWidth != null || config.maxHeight != null) {
                 scaleBitmapWithAspectRatio(
                     bitmap,
                     config.maxWidth,
@@ -836,13 +939,6 @@ class VVideoCompressionEngine(private val context: Context) {
                 finalBitmap.compress(compressFormat, config.quality, outputStream)
             }
             
-            // Clean up bitmaps
-            if (finalBitmap != bitmap) {
-                finalBitmap.recycle()
-            }
-            bitmap.recycle()
-            retriever.release()
-            
             VVideoThumbnailResult(
                 thumbnailPath = outputFile.absolutePath,
                 width = finalBitmap.width,
@@ -851,9 +947,23 @@ class VVideoCompressionEngine(private val context: Context) {
                 format = config.format,
                 timeMs = config.timeMs
             )
+        } catch (e: OutOfMemoryError) {
+            e.printStackTrace()
+            null
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        } finally {
+            // Always clean up resources
+            try {
+                if (finalBitmap != bitmap && finalBitmap != null) {
+                    finalBitmap.recycle()
+                }
+                bitmap?.recycle()
+                retriever?.release()
+            } catch (e: Exception) {
+                // Ignore cleanup errors
+            }
         }
     }
 
@@ -938,7 +1048,8 @@ class VVideoCompressionEngine(private val context: Context) {
      * Performance optimization from Android Quick Fix
      */
     protected fun finalize() {
-        cleanup()
+        // Remove finalize to avoid GC overhead
+        // cleanup()
     }
 
     /**

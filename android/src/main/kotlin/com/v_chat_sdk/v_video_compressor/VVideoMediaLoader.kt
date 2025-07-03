@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * Utility class for loading video files from device storage
@@ -15,7 +16,7 @@ class VVideoMediaLoader(private val context: Context) {
     private val contentResolver: ContentResolver = context.contentResolver
     
     /**
-     * Loads all videos from device storage
+     * Loads all videos from device storage with memory-efficient approach
      */
     suspend fun loadAllVideos(): List<VVideoInfo> = withContext(Dispatchers.IO) {
         val videoList = mutableListOf<VVideoInfo>()
@@ -50,57 +51,79 @@ class VVideoMediaLoader(private val context: Context) {
                 val dataColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
                 
                 while (cursor.moveToNext()) {
-                    val id = cursor.getLong(idColumn)
-                    val name = cursor.getString(nameColumn) ?: "Unknown"
-                    val size = cursor.getLong(sizeColumn)
-                    val duration = cursor.getLong(durationColumn)
-                    var width = cursor.getInt(widthColumn)
-                    var height = cursor.getInt(heightColumn)
-                    val dateAdded = cursor.getLong(dateColumn)
-                    val dataPath = cursor.getString(dataColumn)
+                    // Check if coroutine is still active
+                    ensureActive()
                     
-                    // Use the file path if available, otherwise construct URI
-                    val videoPath = dataPath ?: run {
-                        val contentUri = Uri.withAppendedPath(
-                            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                            id.toString()
-                        )
-                        contentUri.toString()
-                    }
-                    
-                    // If width/height are 0, try to get them from MediaMetadataRetriever
-                    if (width == 0 || height == 0) {
-                        try {
-                            val retriever = MediaMetadataRetriever()
-                            if (dataPath != null) {
-                                retriever.setDataSource(dataPath)
-                            } else {
-                                val contentUri = Uri.withAppendedPath(
-                                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                                    id.toString()
-                                )
-                                retriever.setDataSource(context, contentUri)
-                            }
-                            width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: width
-                            height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: height
-                            retriever.release()
-                        } catch (e: Exception) {
-                            // Keep the original values if retrieval fails
+                    try {
+                        val id = cursor.getLong(idColumn)
+                        val name = cursor.getString(nameColumn) ?: "Unknown"
+                        val size = cursor.getLong(sizeColumn)
+                        val duration = cursor.getLong(durationColumn)
+                        var width = cursor.getInt(widthColumn)
+                        var height = cursor.getInt(heightColumn)
+                        val dateAdded = cursor.getLong(dateColumn)
+                        val dataPath = cursor.getString(dataColumn)
+                        
+                        // Use the file path if available, otherwise construct URI
+                        val videoPath = dataPath ?: run {
+                            val contentUri = Uri.withAppendedPath(
+                                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                                id.toString()
+                            )
+                            contentUri.toString()
                         }
-                    }
-                    
-                    videoList.add(
-                        VVideoInfo(
-                            path = videoPath,
-                            name = name,
-                            fileSizeBytes = size,
-                            durationMillis = duration,
-                            width = width,
-                            height = height
+                        
+                        // If width/height are 0, try to get them from MediaMetadataRetriever
+                        if (width == 0 || height == 0) {
+                            var retriever: MediaMetadataRetriever? = null
+                            try {
+                                retriever = MediaMetadataRetriever()
+                                if (dataPath != null) {
+                                    retriever.setDataSource(dataPath)
+                                } else {
+                                    val contentUri = Uri.withAppendedPath(
+                                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                                        id.toString()
+                                    )
+                                    retriever.setDataSource(context, contentUri)
+                                }
+                                width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: width
+                                height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: height
+                            } catch (e: Exception) {
+                                // Keep the original values if retrieval fails
+                            } finally {
+                                retriever?.release()
+                            }
+                        }
+                        
+                        videoList.add(
+                            VVideoInfo(
+                                path = videoPath,
+                                name = name,
+                                fileSizeBytes = size,
+                                durationMillis = duration,
+                                width = width,
+                                height = height
+                            )
                         )
-                    )
+                        
+                        // Periodically request garbage collection for large lists
+                        if (videoList.size % 50 == 0) {
+                            System.gc()
+                        }
+                    } catch (e: OutOfMemoryError) {
+                        // Stop loading more videos if we're running out of memory
+                        e.printStackTrace()
+                        break
+                    } catch (e: Exception) {
+                        // Skip problematic video entries
+                        e.printStackTrace()
+                    }
                 }
             }
+        } catch (e: OutOfMemoryError) {
+            e.printStackTrace()
+            // Return what we've loaded so far
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -109,17 +132,21 @@ class VVideoMediaLoader(private val context: Context) {
     }
     
     /**
-     * Gets video duration from file path
+     * Gets video duration from file path with proper resource management
      */
     suspend fun getVideoDuration(videoPath: String): Long = withContext(Dispatchers.IO) {
+        var retriever: MediaMetadataRetriever? = null
         try {
-            val retriever = MediaMetadataRetriever()
+            retriever = MediaMetadataRetriever()
             retriever.setDataSource(videoPath)
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            retriever.release()
             duration?.toLongOrNull() ?: 0L
+        } catch (e: OutOfMemoryError) {
+            0L
         } catch (e: Exception) {
             0L
+        } finally {
+            retriever?.release()
         }
     }
     

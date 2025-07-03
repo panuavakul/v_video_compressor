@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:v_video_compressor/v_video_compressor.dart';
 import 'package:v_video_compressor/v_video_compressor_platform_interface.dart';
-import 'package:v_video_compressor/v_video_compressor_method_channel.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 /// Mock platform implementation for testing

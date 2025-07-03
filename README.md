@@ -525,6 +525,35 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Discussions**: [GitHub Discussions](https://github.com/your-repo/v_video_compressor/discussions)
 - **Documentation**: [pub.dev](https://pub.dev/packages/v_video_compressor)
 
+## 📚 Documentation
+
+For detailed documentation and advanced usage, please visit:
+
+- [API Reference](https://pub.dev/documentation/v_video_compressor/latest/)
+- [Advanced Features Guide](ADVANCED_FEATURES_SUPPORT.md)
+- [Memory Optimization Guide](MEMORY_OPTIMIZATION_GUIDE.md) - **Important for production apps**
+- [Android Quick Fix Guide](ANDROID_QUICK_FIX.md)
+- [iOS Quick Fix Guide](IOS_QUICK_FIX.md)
+- [Compression Improvements](COMPRESSION_IMPROVEMENTS.md)
+
+## ⚠️ Important Notes
+
+### Memory Management
+
+Video compression is memory-intensive. For production apps, please read our [Memory Optimization Guide](MEMORY_OPTIMIZATION_GUIDE.md) to avoid OutOfMemoryError issues. Key recommendations:
+
+- Always check available memory before compression
+- Use lower quality settings for devices with < 2GB RAM
+- Implement progressive quality fallback
+- Process videos in batches for bulk operations
+
+### Platform Specific
+
+- **Minimum API**: Android 5.0 (API 21)
+- **Hardware Acceleration**: Available on most devices
+- **Permissions**: Automatically handled for Android 13+
+- **Background**: Full background compression support
+
 ---
 
 **Made with ❤️ for the Flutter community**

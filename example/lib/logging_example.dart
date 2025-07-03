@@ -3,7 +3,7 @@ import 'package:v_video_compressor/v_video_compressor.dart';
 
 /// Example showing how to configure and use the V Video Compressor logging system
 class LoggingExampleWidget extends StatefulWidget {
-  const LoggingExampleWidget({Key? key}) : super(key: key);
+  const LoggingExampleWidget({super.key});
 
   @override
   State<LoggingExampleWidget> createState() => _LoggingExampleWidgetState();
@@ -72,10 +72,7 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
           children: [
             const Text(
               'Logging Configuration',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
 
@@ -93,8 +90,10 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
             ),
 
             // Log Level
-            const Text('Log Level:',
-                style: TextStyle(fontWeight: FontWeight.w500)),
+            const Text(
+              'Log Level:',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
             DropdownButton<VVideoLogLevel>(
               value: _currentLogLevel,
               isExpanded: true,
@@ -192,10 +191,7 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
           children: [
             const Text(
               'Preset Configurations',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -205,7 +201,8 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
                 ElevatedButton(
                   onPressed: () {
                     VVideoCompressor.configureLogging(
-                        VVideoLogConfig.production());
+                      VVideoLogConfig.production(),
+                    );
                     _updateStateFromConfig();
                   },
                   child: const Text('Production'),
@@ -213,7 +210,8 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
                 ElevatedButton(
                   onPressed: () {
                     VVideoCompressor.configureLogging(
-                        VVideoLogConfig.development());
+                      VVideoLogConfig.development(),
+                    );
                     _updateStateFromConfig();
                   },
                   child: const Text('Development'),
@@ -228,7 +226,8 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
                 ElevatedButton(
                   onPressed: () {
                     VVideoCompressor.configureLogging(
-                        VVideoLogConfig.disabled());
+                      VVideoLogConfig.disabled(),
+                    );
                     _updateStateFromConfig();
                   },
                   child: const Text('Disabled'),
@@ -250,10 +249,7 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
           children: [
             const Text(
               'Test Logging',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             const Text('Test different log levels and operations:'),
@@ -301,15 +297,13 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
           children: [
             const Text(
               'Current Configuration',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             Text('Enabled: ${config.enabled}'),
             Text(
-                'Level: ${config.level.name.toUpperCase()} (${config.level.level})'),
+              'Level: ${config.level.name.toUpperCase()} (${config.level.level})',
+            ),
             Text('Show Progress: ${config.showProgress}'),
             Text('Show Parameters: ${config.showParameters}'),
             Text('Show Success: ${config.showSuccess}'),
@@ -339,15 +333,15 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
     try {
       final version = await _compressor.getPlatformVersion();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Platform version: $version')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Platform version: $version')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -363,9 +357,9 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -383,15 +377,17 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(
-                  'Compression result: ${result?.compressedFilePath ?? "Failed"}')),
+            content: Text(
+              'Compression result: ${result?.compressedFilePath ?? "Failed"}',
+            ),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -406,15 +402,17 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(
-                  'Thumbnail result: ${result?.thumbnailPath ?? "Failed"}')),
+            content: Text(
+              'Thumbnail result: ${result?.thumbnailPath ?? "Failed"}',
+            ),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -424,7 +422,9 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
       // Test with empty path to trigger warning/error logs
       await _compressor.getVideoInfo('');
       await _compressor.compressVideo(
-          '', const VVideoCompressionConfig.medium());
+        '',
+        const VVideoCompressionConfig.medium(),
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -433,9 +433,9 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
