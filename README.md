@@ -4,45 +4,31 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-blue.svg)](https://flutter.dev)
 
-A professional Flutter plugin for **high-quality video compression** with real-time progress tracking, advanced customization, and comprehensive debugging capabilities.
+A **professional Flutter plugin** for high-quality video compression with real-time progress tracking, thumbnail generation, and comprehensive configuration options.
 
 ## ✨ **Key Features**
 
-- ⛔ **NO ffmpeg** this package use native api for compress android **media3** for android and **AVFoundation** for ios
-- 🎬 **Professional Video Compression** - Multiple quality levels with advanced customization
+- 🎬 **Professional Video Compression** - 5 quality levels with native platform APIs (Media3 for Android, AVFoundation for iOS)
 - 📊 **Real-Time Progress Tracking** - Smooth progress updates with hybrid estimation algorithm
 - 🔧 **Advanced Configuration** - 20+ compression parameters for professional control
 - 🖼️ **Thumbnail Generation** - Extract high-quality thumbnails at any timestamp
-- 📱 **Cross-Platform** - Full Android & iOS support with native performance
-- 🚀 **Batch Processing** - Compress multiple videos with overall progress
-- 📝 **Small apk size** - very high speed video compress native side kotlin and swift
+- 📱 **Cross-Platform** - Full Android & iOS support with hardware acceleration
+- 🚀 **Batch Processing** - Compress multiple videos with overall progress tracking
 - ⛔ **Cancellation Support** - Cancel operations anytime with automatic cleanup
 - 📝 **Comprehensive Logging** - Production-ready error tracking and debugging
-- 🧪 **Thoroughly Tested** - 95%+ test coverage with mock implementations
+- 🧪 **Thoroughly Tested** - 95%+ test coverage with complete mock implementations
+- ⚡ **No ffmpeg** - Uses native APIs for optimal performance and smaller app size
 
 ## 🎯 **Philosophy**
 
-This plugin **focuses exclusively on video compression** - it does what it does best. For video selection, use established plugins like [`image_picker`](https://pub.dev/packages/image_picker) or [`file_picker`](https://pub.dev/packages/file_picker).
+This plugin **focuses exclusively on video compression and thumbnail generation**. For video selection, use established plugins like [`image_picker`](https://pub.dev/packages/image_picker) or [`file_picker`](https://pub.dev/packages/file_picker).
 
 ## 📱 **Platform Support**
 
 | Platform    | Support             | Minimum Version        | Notes                           |
 | ----------- | ------------------- | ---------------------- | ------------------------------- |
 | **Android** | ✅ **Full Support** | API 21+ (Android 5.0+) | Hardware acceleration available |
-| **iOS**     | ✅ **Full Support** | iOS 13.0+              | Hardware acceleration available |
-
-### **iOS Version Compatibility**
-
-| iOS Version   | Support Level     | Features                                     |
-| ------------- | ----------------- | -------------------------------------------- |
-| **iOS 16.0+** | ✅ **Optimal**    | All features, latest APIs                    |
-| **iOS 15.0+** | ✅ **Full**       | All features supported                       |
-| **iOS 14.0+** | ✅ **Full**       | All features supported                       |
-| **iOS 13.0+** | ✅ **Full**       | All features supported                       |
-| **iOS 12.0+** | ✅ **Full**       | All features supported                       |
-| **iOS 11.0+** | ✅ **Compatible** | Core features, limited hardware acceleration |
-
-**Note**: iOS Simulator has limited hardware acceleration. Test on physical devices for optimal performance.
+| **iOS**     | ✅ **Full Support** | iOS 11.0+              | Hardware acceleration available |
 
 ## 🚀 **Quick Start**
 
@@ -52,8 +38,10 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  v_video_compressor: ^1.0.0
-  image_picker: ^1.0.7 # For video selection
+  v_video_compressor: ^1.0.3
+  file_picker: ^8.0.0 # For video selection
+  # OR
+  image_picker: ^1.0.7 # Alternative for video selection
 ```
 
 ### 2. Platform Setup
@@ -84,24 +72,28 @@ Add permissions to `ios/Runner/Info.plist`:
 
 ```dart
 import 'package:v_video_compressor/v_video_compressor.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 
-class VideoCompressionScreen extends StatefulWidget {
+class VideoCompressionExample extends StatefulWidget {
   @override
-  _VideoCompressionScreenState createState() => _VideoCompressionScreenState();
+  _VideoCompressionExampleState createState() => _VideoCompressionExampleState();
 }
 
-class _VideoCompressionScreenState extends State<VideoCompressionScreen> {
+class _VideoCompressionExampleState extends State<VideoCompressionExample> {
   final VVideoCompressor _compressor = VVideoCompressor();
-  final ImagePicker _picker = ImagePicker();
 
   double _progress = 0.0;
   bool _isCompressing = false;
 
   Future<void> _compressVideo() async {
-    // 1. Pick video using image_picker
-    final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
-    if (video == null) return;
+    // 1. Pick video using file_picker
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+    );
+
+    if (result == null || result.files.single.path == null) return;
+
+    final videoPath = result.files.single.path!;
 
     setState(() {
       _isCompressing = true;
@@ -110,19 +102,20 @@ class _VideoCompressionScreenState extends State<VideoCompressionScreen> {
 
     try {
       // 2. Compress with progress tracking
-      final result = await _compressor.compressVideo(
-        video.path,
-        VVideoCompressionConfig.medium(),
+      final compressionResult = await _compressor.compressVideo(
+        videoPath,
+        const VVideoCompressionConfig.medium(),
         onProgress: (progress) {
           setState(() => _progress = progress);
         },
       );
 
-      if (result != null) {
+      if (compressionResult != null) {
         print('✅ Compression completed!');
-        print('Original: ${result.originalSizeFormatted}');
-        print('Compressed: ${result.compressedSizeFormatted}');
-        print('Space saved: ${result.spaceSavedFormatted}');
+        print('Original: ${compressionResult.originalSizeFormatted}');
+        print('Compressed: ${compressionResult.compressedSizeFormatted}');
+        print('Space saved: ${compressionResult.spaceSavedFormatted}');
+        print('Output path: ${compressionResult.outputPath}');
       }
     } catch (e) {
       print('❌ Compression failed: $e');
@@ -134,20 +127,20 @@ class _VideoCompressionScreenState extends State<VideoCompressionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Video Compressor')),
+      appBar: AppBar(title: const Text('Video Compressor')),
       body: Center(
         child: _isCompressing
             ? Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   CircularProgressIndicator(value: _progress),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Text('${(_progress * 100).toInt()}%'),
                 ],
               )
             : ElevatedButton(
                 onPressed: _compressVideo,
-                child: Text('Pick & Compress Video'),
+                child: const Text('Pick & Compress Video'),
               ),
       ),
     );
@@ -159,13 +152,13 @@ class _VideoCompressionScreenState extends State<VideoCompressionScreen> {
 
 Choose the right quality for your use case:
 
-| Quality                          | Resolution | Bitrate Range | File Size  | Use Case                      |
-| -------------------------------- | ---------- | ------------- | ---------- | ----------------------------- |
-| `VVideoCompressQuality.high`     | 1080p HD   | 8-12 Mbps     | Larger     | Professional, archival        |
-| `VVideoCompressQuality.medium`   | 720p       | 4-6 Mbps      | Balanced   | General purpose, social media |
-| `VVideoCompressQuality.low`      | 480p       | 1-3 Mbps      | Smaller    | Quick sharing, messaging      |
-| `VVideoCompressQuality.veryLow`  | 360p       | 0.5-1.5 Mbps  | Very small | Bandwidth limited             |
-| `VVideoCompressQuality.ultraLow` | 240p       | 0.2-0.8 Mbps  | Minimal    | Maximum compression           |
+| Quality                          | Resolution | Typical Bitrate | File Size  | Use Case                      |
+| -------------------------------- | ---------- | --------------- | ---------- | ----------------------------- |
+| `VVideoCompressQuality.high`     | 1080p HD   | 3.5 Mbps        | Larger     | Professional, archival        |
+| `VVideoCompressQuality.medium`   | 720p       | 1.8 Mbps        | Balanced   | General purpose, social media |
+| `VVideoCompressQuality.low`      | 480p       | 900 kbps        | Smaller    | Quick sharing, messaging      |
+| `VVideoCompressQuality.veryLow`  | 360p       | 500 kbps        | Very small | Bandwidth limited             |
+| `VVideoCompressQuality.ultraLow` | 240p       | 350 kbps        | Minimal    | Maximum compression           |
 
 ## 🔧 **Advanced Configuration**
 
@@ -176,15 +169,15 @@ final advancedConfig = VVideoAdvancedConfig(
   // Resolution & Quality
   customWidth: 1280,
   customHeight: 720,
-  videoBitrate: 4000000,        // 4 Mbps
+  videoBitrate: 2000000,        // 2 Mbps
   frameRate: 30.0,              // 30 FPS
 
   // Codec & Encoding
   videoCodec: VVideoCodec.h265, // Better compression
   audioCodec: VAudioCodec.aac,
-  encodingSpeed: VEncodingSpeed.slow, // Better quality
-  crf: 23,                      // Quality factor (lower = better)
-  twoPassEncoding: true,        // Best quality
+  encodingSpeed: VEncodingSpeed.medium,
+  crf: 25,                      // Quality factor (lower = better)
+  twoPassEncoding: true,        // Better quality
   hardwareAcceleration: true,   // Use GPU
 
   // Audio Settings
@@ -192,15 +185,18 @@ final advancedConfig = VVideoAdvancedConfig(
   audioSampleRate: 44100,       // 44.1 kHz
   audioChannels: 2,             // Stereo
 
-  // Effects & Editing
+  // Video Effects
   brightness: 0.1,              // Slight brightness boost
   contrast: 0.05,               // Slight contrast increase
+  saturation: 0.1,              // Slight saturation increase
+
+  // Editing
   trimStartMs: 2000,            // Skip first 2 seconds
   trimEndMs: 60000,             // End at 1 minute
   rotation: 90,                 // Rotate 90 degrees
 );
 
-final result = await compressor.compressVideo(
+final result = await _compressor.compressVideo(
   videoPath,
   VVideoCompressionConfig(
     quality: VVideoCompressQuality.medium,
@@ -214,7 +210,7 @@ final result = await compressor.compressVideo(
 ```dart
 // Maximum compression for smallest files
 final maxCompression = VVideoAdvancedConfig.maximumCompression(
-  targetBitrate: 500000,  // 500 kbps
+  targetBitrate: 300000,  // 300 kbps
   keepAudio: false,       // Remove audio
 );
 
@@ -223,6 +219,14 @@ final socialMedia = VVideoAdvancedConfig.socialMediaOptimized();
 
 // Mobile optimized
 final mobile = VVideoAdvancedConfig.mobileOptimized();
+
+final result = await _compressor.compressVideo(
+  videoPath,
+  VVideoCompressionConfig(
+    quality: VVideoCompressQuality.medium,
+    advanced: maxCompression, // Use preset
+  ),
+);
 ```
 
 ## 🖼️ **Thumbnail Generation**
@@ -230,7 +234,7 @@ final mobile = VVideoAdvancedConfig.mobileOptimized();
 ### Single Thumbnail
 
 ```dart
-final thumbnail = await compressor.getVideoThumbnail(
+final thumbnail = await _compressor.getVideoThumbnail(
   videoPath,
   VVideoThumbnailConfig(
     timeMs: 5000,                    // 5 seconds into video
@@ -244,13 +248,14 @@ final thumbnail = await compressor.getVideoThumbnail(
 if (thumbnail != null) {
   print('Thumbnail: ${thumbnail.thumbnailPath}');
   print('Size: ${thumbnail.width}x${thumbnail.height}');
+  print('File size: ${thumbnail.fileSizeFormatted}');
 }
 ```
 
 ### Multiple Thumbnails
 
 ```dart
-final thumbnails = await compressor.getVideoThumbnails(
+final thumbnails = await _compressor.getVideoThumbnails(
   videoPath,
   [
     VVideoThumbnailConfig(timeMs: 1000, maxWidth: 150),   // 1s
@@ -260,6 +265,9 @@ final thumbnails = await compressor.getVideoThumbnails(
 );
 
 print('Generated ${thumbnails.length} thumbnails');
+for (final thumbnail in thumbnails) {
+  print('${thumbnail.timeMs}ms: ${thumbnail.thumbnailPath}');
+}
 ```
 
 ## 📊 **Batch Processing**
@@ -267,26 +275,41 @@ print('Generated ${thumbnails.length} thumbnails');
 Compress multiple videos with overall progress tracking:
 
 ```dart
-final results = await compressor.compressVideos(
+final results = await _compressor.compressVideos(
   [videoPath1, videoPath2, videoPath3],
-  VVideoCompressionConfig.medium(),
+  const VVideoCompressionConfig.medium(),
   onProgress: (progress, currentIndex, total) {
     print('Overall: ${(progress * 100).toInt()}% (${currentIndex + 1}/$total)');
   },
 );
 
 print('Successfully compressed ${results.length} videos');
+for (final result in results) {
+  print('${result.originalPath} → ${result.outputPath}');
+  print('Space saved: ${result.spaceSavedFormatted}');
+}
 ```
 
-## 🔍 **Compression Estimation**
+## 🔍 **Video Information & Compression Estimation**
 
-Get size estimates before compression:
+### Get Video Information
 
 ```dart
-final estimate = await compressor.getCompressionEstimate(
+final videoInfo = await _compressor.getVideoInfo(videoPath);
+if (videoInfo != null) {
+  print('Duration: ${videoInfo.durationFormatted}');
+  print('Resolution: ${videoInfo.width}x${videoInfo.height}');
+  print('File size: ${videoInfo.fileSizeFormatted}');
+}
+```
+
+### Estimate Compression Size
+
+```dart
+final estimate = await _compressor.getCompressionEstimate(
   videoPath,
   VVideoCompressQuality.medium,
-  advanced: advancedConfig,
+  advanced: advancedConfig, // Optional
 );
 
 if (estimate != null) {
@@ -302,14 +325,14 @@ Cancel operations anytime:
 
 ```dart
 // Cancel ongoing compression
-await compressor.cancelCompression();
+await _compressor.cancelCompression();
 
 // Check if compression is running
-final isActive = await compressor.isCompressing();
+final isActive = await _compressor.isCompressing();
 
 // Handle cancellation in UI
 if (isActive) {
-  await compressor.cancelCompression();
+  await _compressor.cancelCompression();
   // Files are automatically cleaned up
 }
 ```
@@ -322,7 +345,7 @@ if (isActive) {
 // Clean everything when app closes
 @override
 void dispose() {
-  compressor.cleanup();
+  _compressor.cleanup();
   super.dispose();
 }
 ```
@@ -331,21 +354,21 @@ void dispose() {
 
 ```dart
 // Safe cleanup - keep compressed videos
-await compressor.cleanupFiles(
+await _compressor.cleanupFiles(
   deleteThumbnails: true,
   deleteCompressedVideos: false,  // Keep compressed videos
   clearCache: true,
 );
 
 // Full cleanup - ⚠️ removes all compressed videos
-await compressor.cleanupFiles(
+await _compressor.cleanupFiles(
   deleteThumbnails: true,
   deleteCompressedVideos: true,   // ⚠️ This deletes your videos!
   clearCache: true,
 );
 ```
 
-## 📝 **Comprehensive API Reference**
+## 📝 **Complete API Reference**
 
 ### Core Methods
 
@@ -415,7 +438,7 @@ The plugin provides comprehensive error handling and logging:
 
 ```dart
 try {
-  final result = await compressor.compressVideo(videoPath, config);
+  final result = await _compressor.compressVideo(videoPath, config);
   if (result == null) {
     print('Compression failed - check logs for details');
   }
@@ -433,15 +456,15 @@ try {
 ### Android
 
 - **Minimum API**: Android 5.0 (API 21)
-- **Hardware Acceleration**: Available on most devices
+- **Hardware Acceleration**: Available on most devices with Media3
 - **Permissions**: Automatically handled for Android 13+
 - **Background**: Full background compression support
 
 ### iOS
 
 - **Minimum Version**: iOS 11.0
-- **Hardware Acceleration**: Available on iOS 11+
-- **Simulator**: Limited acceleration (test on devices)
+- **Hardware Acceleration**: Available with AVFoundation
+- **Simulator**: Limited acceleration (test on devices for best results)
 - **Background**: May be limited by iOS background execution policies
 
 ## 🔧 **Troubleshooting**
@@ -457,7 +480,7 @@ try {
 **2. Progress not updating**
 
 - Ensure you're calling `setState()` in progress callback
-- Check if compression is actually running
+- Check if compression is actually running with `isCompressing()`
 
 **3. iOS simulator issues**
 
@@ -467,11 +490,11 @@ try {
 **4. Large file handling**
 
 - Very large files (>4GB) may require more memory
-- Consider breaking into smaller segments
+- Consider using lower quality settings for large files
 
 ### Debug Logging
 
-The plugin provides comprehensive logging. To view logs:
+The plugin provides comprehensive logging:
 
 ```dart
 // Logs are automatically output to console with tag 'VVideoCompressor'
@@ -491,9 +514,21 @@ Check the [example directory](example/) for complete sample applications:
 ## 📚 **Additional Resources**
 
 - **[API Documentation](https://pub.dev/documentation/v_video_compressor)** - Complete API reference
-- **[Advanced Guide](example/ADVANCED_COMPRESSION_GUIDE.md)** - Professional compression techniques
-- **[iOS Integration](example/IOS_ADVANCED_FEATURES_GUIDE.md)** - iOS-specific features and tips
-- **[Testing Guide](example/TESTING_GUIDE.md)** - Testing your compression workflow
+- **[Memory Optimization Guide](MEMORY_OPTIMIZATION_GUIDE.md)** - Critical for production apps
+- **[Advanced Features Guide](ADVANCED_FEATURES_SUPPORT.md)** - Detailed feature matrix
+- **[Android Quick Fix Guide](ANDROID_QUICK_FIX.md)** - Android-specific issues
+- **[iOS Quick Fix Guide](IOS_QUICK_FIX.md)** - iOS-specific issues
+
+## ⚠️ **Important Notes**
+
+### Memory Management
+
+Video compression is memory-intensive. For production apps, please read our [Memory Optimization Guide](MEMORY_OPTIMIZATION_GUIDE.md) to avoid OutOfMemoryError issues. Key recommendations:
+
+- Always check available memory before compression
+- Use lower quality settings for devices with < 2GB RAM
+- Implement progressive quality fallback
+- Process videos in batches for bulk operations
 
 ## 🤝 **Contributing**
 
@@ -524,35 +559,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Issues**: [GitHub Issues](https://github.com/your-repo/v_video_compressor/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/your-repo/v_video_compressor/discussions)
 - **Documentation**: [pub.dev](https://pub.dev/packages/v_video_compressor)
-
-## 📚 Documentation
-
-For detailed documentation and advanced usage, please visit:
-
-- [API Reference](https://pub.dev/documentation/v_video_compressor/latest/)
-- [Advanced Features Guide](ADVANCED_FEATURES_SUPPORT.md)
-- [Memory Optimization Guide](MEMORY_OPTIMIZATION_GUIDE.md) - **Important for production apps**
-- [Android Quick Fix Guide](ANDROID_QUICK_FIX.md)
-- [iOS Quick Fix Guide](IOS_QUICK_FIX.md)
-- [Compression Improvements](COMPRESSION_IMPROVEMENTS.md)
-
-## ⚠️ Important Notes
-
-### Memory Management
-
-Video compression is memory-intensive. For production apps, please read our [Memory Optimization Guide](MEMORY_OPTIMIZATION_GUIDE.md) to avoid OutOfMemoryError issues. Key recommendations:
-
-- Always check available memory before compression
-- Use lower quality settings for devices with < 2GB RAM
-- Implement progressive quality fallback
-- Process videos in batches for bulk operations
-
-### Platform Specific
-
-- **Minimum API**: Android 5.0 (API 21)
-- **Hardware Acceleration**: Available on most devices
-- **Permissions**: Automatically handled for Android 13+
-- **Background**: Full background compression support
 
 ---
 
