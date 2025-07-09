@@ -89,6 +89,17 @@ class _VideoCompressorPageState extends State<VideoCompressorPage> {
               const SizedBox(height: 20),
               _buildErrorMessage(),
             ],
+            ElevatedButton(
+              onPressed: _isCompressing ? null : _pickVideo,
+              child: Text('Pick Video'),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _showOrientationFixDemo,
+              icon: Icon(Icons.screen_rotation),
+              label: Text('Orientation Fix Demo'),
+            ),
+            SizedBox(height: 16),
           ],
         ),
       ),
@@ -636,7 +647,14 @@ class _VideoCompressorPageState extends State<VideoCompressorPage> {
     });
 
     try {
-      final config = VVideoCompressionConfig(quality: quality);
+      final config = VVideoCompressionConfig(
+        quality: quality,
+        advanced: VVideoAdvancedConfig(
+          autoCorrectOrientation: true,
+          videoBitrate: 1500000,
+          audioBitrate: 128000,
+        ),
+      );
 
       final result = await _compressor.compressVideo(
         _videoPath!,
@@ -650,6 +668,15 @@ class _VideoCompressorPageState extends State<VideoCompressorPage> {
         _isCompressing = false;
         _result = result;
       });
+
+      if (result != null) {
+        debugPrint('✅ Vertical video compressed successfully!');
+        debugPrint('Original: ${result.originalResolution}');
+        debugPrint('Compressed: ${result.compressedResolution}');
+        debugPrint(
+          'Orientation preserved: ${result.originalResolution.contains('x')}',
+        );
+      }
     } catch (e) {
       setState(() {
         _isCompressing = false;
@@ -761,5 +788,49 @@ class _VideoCompressorPageState extends State<VideoCompressorPage> {
 
   String _getFileName(String path) {
     return path.split('/').last;
+  }
+
+  void _showOrientationFixDemo() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('🎥 Orientation Fix Demo'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('📱 The new autoCorrectOrientation feature ensures:'),
+            SizedBox(height: 8),
+            Text('• Vertical videos stay vertical after compression'),
+            Text('• Portrait videos maintain their 9:16 aspect ratio'),
+            Text('• No more horizontal display of vertical content'),
+            Text('• Automatic detection of original video orientation'),
+            SizedBox(height: 12),
+            Text('💡 Usage:', style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 4),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'VVideoAdvancedConfig(\n'
+                '  autoCorrectOrientation: true,\n'
+                '  // other settings...\n'
+                ')',
+                style: TextStyle(fontFamily: 'monospace'),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Got it!'),
+          ),
+        ],
+      ),
+    );
   }
 }

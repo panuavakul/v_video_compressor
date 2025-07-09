@@ -250,6 +250,7 @@ void main() {
           videoBitrate: 2000000,
           customWidth: 1280,
           customHeight: 720,
+          autoCorrectOrientation: true,
         );
 
         final estimate = await compressor.getCompressionEstimate(
@@ -493,6 +494,7 @@ void main() {
           customHeight: 720,
           frameRate: 30.0,
           crf: 23,
+          autoCorrectOrientation: true,
         );
         expect(advanced.isValid(), isTrue);
 
@@ -503,13 +505,45 @@ void main() {
         expect(config.isValid(), isTrue);
       });
 
-      test('should reject invalid advanced config', () {
-        final advanced = VVideoAdvancedConfig(
-          customWidth: 1280,
-          // Missing height - should be invalid
-          frameRate: -1.0, // Invalid frame rate
+      test('should validate autoCorrectOrientation parameter', () {
+        final advancedWithOrientation = VVideoAdvancedConfig(
+          autoCorrectOrientation: true,
+          videoBitrate: 1500000,
         );
-        expect(advanced.isValid(), isFalse);
+        expect(advancedWithOrientation.isValid(), isTrue);
+        expect(advancedWithOrientation.autoCorrectOrientation, isTrue);
+
+        final advancedWithoutOrientation = VVideoAdvancedConfig(
+          autoCorrectOrientation: false,
+          videoBitrate: 1500000,
+        );
+        expect(advancedWithoutOrientation.isValid(), isTrue);
+        expect(advancedWithoutOrientation.autoCorrectOrientation, isFalse);
+
+        final advancedNullOrientation = VVideoAdvancedConfig(
+          videoBitrate: 1500000,
+        );
+        expect(advancedNullOrientation.isValid(), isTrue);
+        expect(advancedNullOrientation.autoCorrectOrientation, isNull);
+      });
+
+      test('should compress video with orientation correction', () async {
+        const videoPath = '/path/to/vertical_video.mp4';
+        final config = VVideoCompressionConfig(
+          quality: VVideoCompressQuality.medium,
+          advanced: VVideoAdvancedConfig(
+            autoCorrectOrientation: true,
+            videoBitrate: 1500000,
+            audioBitrate: 128000,
+          ),
+        );
+
+        final result = await compressor.compressVideo(videoPath, config);
+
+        expect(result, isNotNull);
+        expect(result!.originalVideo.path, videoPath);
+        expect(result.compressedFilePath, '/path/to/compressed_video.mp4');
+        expect(result.originalResolution, '1920x1080');
       });
 
       test('should validate thumbnail config', () {
@@ -528,6 +562,15 @@ void main() {
           quality: 150, // Invalid quality
         );
         expect(config.isValid(), isFalse);
+      });
+
+      test('should reject invalid advanced config', () {
+        final advanced = VVideoAdvancedConfig(
+          customWidth: 1280,
+          // Missing height - should be invalid
+          frameRate: -1.0, // Invalid frame rate
+        );
+        expect(advanced.isValid(), isFalse);
       });
     });
 

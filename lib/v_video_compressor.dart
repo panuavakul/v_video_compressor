@@ -131,6 +131,9 @@ class VVideoAdvancedConfig {
   /// Remove audio track completely
   final bool? removeAudio;
 
+  /// Auto-correct video orientation (preserves original orientation)
+  final bool? autoCorrectOrientation;
+
   /// Video brightness adjustment (-1.0 to 1.0)
   final double? brightness;
 
@@ -179,6 +182,7 @@ class VVideoAdvancedConfig {
     this.audioSampleRate,
     this.audioChannels,
     this.removeAudio,
+    this.autoCorrectOrientation,
     this.brightness,
     this.contrast,
     this.saturation,
@@ -289,6 +293,7 @@ class VVideoAdvancedConfig {
       'audioSampleRate': audioSampleRate,
       'audioChannels': audioChannels,
       'removeAudio': removeAudio,
+      'autoCorrectOrientation': autoCorrectOrientation,
       'brightness': brightness,
       'contrast': contrast,
       'saturation': saturation,
@@ -300,6 +305,50 @@ class VVideoAdvancedConfig {
       'noiseReduction': noiseReduction,
       'monoAudio': monoAudio,
     };
+  }
+
+  factory VVideoAdvancedConfig.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return VVideoAdvancedConfig();
+
+    return VVideoAdvancedConfig(
+      videoBitrate: map['videoBitrate']?.toInt(),
+      audioBitrate: map['audioBitrate']?.toInt(),
+      customWidth: map['customWidth']?.toInt(),
+      customHeight: map['customHeight']?.toInt(),
+      frameRate: map['frameRate']?.toDouble(),
+      videoCodec: VVideoCodec.values.cast<VVideoCodec?>().firstWhere(
+            (codec) => codec?.value == map['videoCodec'],
+            orElse: () => null,
+          ),
+      audioCodec: VAudioCodec.values.cast<VAudioCodec?>().firstWhere(
+            (codec) => codec?.value == map['audioCodec'],
+            orElse: () => null,
+          ),
+      encodingSpeed: VEncodingSpeed.values.cast<VEncodingSpeed?>().firstWhere(
+            (speed) => speed?.value == map['encodingSpeed'],
+            orElse: () => null,
+          ),
+      crf: map['crf']?.toInt(),
+      twoPassEncoding: map['twoPassEncoding'],
+      hardwareAcceleration: map['hardwareAcceleration'],
+      trimStartMs: map['trimStartMs']?.toInt(),
+      trimEndMs: map['trimEndMs']?.toInt(),
+      rotation: map['rotation']?.toInt(),
+      audioSampleRate: map['audioSampleRate']?.toInt(),
+      audioChannels: map['audioChannels']?.toInt(),
+      removeAudio: map['removeAudio'],
+      autoCorrectOrientation: map['autoCorrectOrientation'],
+      brightness: map['brightness']?.toDouble(),
+      contrast: map['contrast']?.toDouble(),
+      saturation: map['saturation']?.toDouble(),
+      variableBitrate: map['variableBitrate'],
+      keyframeInterval: map['keyframeInterval']?.toInt(),
+      bFrames: map['bFrames']?.toInt(),
+      reducedFrameRate: map['reducedFrameRate']?.toDouble(),
+      aggressiveCompression: map['aggressiveCompression'],
+      noiseReduction: map['noiseReduction'],
+      monoAudio: map['monoAudio'],
+    );
   }
 
   /// Creates a maximum compression configuration for smallest file sizes
@@ -324,6 +373,7 @@ class VVideoAdvancedConfig {
       monoAudio: !keepAudio ? null : true, // Mono audio if keeping audio
       audioSampleRate: keepAudio ? 22050 : null, // Lower sample rate
       audioChannels: keepAudio ? 1 : null, // Mono audio
+      autoCorrectOrientation: true, // Preserve original orientation
     );
   }
 
@@ -341,6 +391,7 @@ class VVideoAdvancedConfig {
       aggressiveCompression: true, // Enable aggressive settings
       audioSampleRate: 44100, // Standard sample rate
       audioChannels: 2, // Stereo audio
+      autoCorrectOrientation: true, // Critical for social media vertical videos
     );
   }
 
@@ -358,6 +409,7 @@ class VVideoAdvancedConfig {
       reducedFrameRate: 30.0, // 30 FPS
       audioSampleRate: 44100, // Standard sample rate
       audioChannels: 2, // Stereo audio
+      autoCorrectOrientation: true, // Essential for mobile vertical videos
     );
   }
 }
@@ -1103,12 +1155,14 @@ class VVideoCompressor {
   Future<void> cancelCompression() async {
     try {
       VVideoLogger.methodCall('cancelCompression', null);
+      VVideoLogger.info('Starting compression cancellation...');
 
       await VVideoCompressorPlatform.instance.cancelCompression();
 
-      VVideoLogger.success('cancelCompression');
+      VVideoLogger.success('cancelCompression',
+          {'operation': 'Compression cancellation finished'});
     } catch (error, stackTrace) {
-      VVideoLogger.error('Failed to cancel compression', error, stackTrace);
+      VVideoLogger.error('Compression cancellation failed', error, stackTrace);
     }
   }
 
@@ -1143,31 +1197,23 @@ class VVideoCompressor {
 
   /// Generate a single thumbnail from a video file at a specific timestamp
   ///
-  /// This method extracts a high-quality thumbnail image from the video at
-  /// the specified timestamp with customizable dimensions and format.
+  /// This method efficiently generates a single thumbnail from a video file
+  /// at a specified timestamp, useful for creating video previews or galleries.
   ///
   /// Features:
-  /// - Extract thumbnail at any timestamp (in milliseconds)
-  /// - Customizable output dimensions with aspect ratio preservation
-  /// - JPEG and PNG format support with quality control
-  /// - Automatic file naming and path management
+  /// - Efficient thumbnail generation
+  /// - Different formats and quality levels supported
+  /// - Automatic error handling and recovery
   ///
   /// Example:
   /// ```dart
   /// final thumbnail = await compressor.getVideoThumbnail(
   ///   videoPath,
-  ///   VVideoThumbnailConfig(
-  ///     timeMs: 5000,        // 5 seconds into the video
-  ///     maxWidth: 300,       // Maximum width
-  ///     maxHeight: 200,      // Maximum height
-  ///     format: VThumbnailFormat.jpeg,
-  ///     quality: 85,         // JPEG quality (0-100)
-  ///   ),
+  ///   VVideoThumbnailConfig(timeMs: 1000, maxWidth: 150),
   /// );
   ///
   /// if (thumbnail != null) {
-  ///   print('Thumbnail saved to: ${thumbnail.thumbnailPath}');
-  ///   print('Size: ${thumbnail.width}x${thumbnail.height}');
+  ///   print('Thumbnail generated successfully');
   /// }
   /// ```
   Future<VVideoThumbnailResult?> getVideoThumbnail(
@@ -1182,6 +1228,7 @@ class VVideoCompressor {
         'maxHeight': config.maxHeight,
         'format': config.format.value,
         'quality': config.quality,
+        'outputPath': config.outputPath,
       });
 
       if (videoPath.isEmpty) {
@@ -1202,14 +1249,14 @@ class VVideoCompressor {
       if (result != null) {
         VVideoLogger.success('getVideoThumbnail', {
           'thumbnailPath': result.thumbnailPath,
-          'dimensions': '${result.width}x${result.height}',
+          'width': result.width,
+          'height': result.height,
           'fileSize': result.fileSizeFormatted,
-          'format': result.format.value,
           'timeMs': result.timeMs,
         });
       } else {
-        VVideoLogger.error(
-            'Failed to generate thumbnail - video may be invalid or timestamp out of range');
+        VVideoLogger.warning(
+            'Thumbnail generation failed - no result returned');
       }
 
       return result;

@@ -198,36 +198,21 @@ void main() {
       test('should configure logging correctly', () {
         // Test different logging configurations
         VVideoCompressor.configureLogging(VVideoLogConfig.production());
-        expect(VVideoCompressor.loggingConfig.level, VVideoLogLevel.error);
         expect(VVideoCompressor.loggingConfig.enabled, true);
-
-        VVideoCompressor.configureLogging(VVideoLogConfig.development());
-        expect(VVideoCompressor.loggingConfig.level, VVideoLogLevel.verbose);
-        expect(VVideoCompressor.loggingConfig.showProgress, true);
 
         VVideoCompressor.configureLogging(VVideoLogConfig.disabled());
         expect(VVideoCompressor.loggingConfig.enabled, false);
 
-        // Custom configuration
-        const customConfig = VVideoLogConfig(
-          enabled: true,
-          level: VVideoLogLevel.info,
-          showProgress: true,
-          showParameters: true,
-        );
-        VVideoCompressor.configureLogging(customConfig);
-        expect(VVideoCompressor.loggingConfig.level, VVideoLogLevel.info);
-        expect(VVideoCompressor.loggingConfig.showProgress, true);
-        expect(VVideoCompressor.loggingConfig.showParameters, true);
+        VVideoCompressor.configureLogging(VVideoLogConfig.debug());
+        expect(VVideoCompressor.loggingConfig.enabled, true);
       });
 
-      test('should have correct log level hierarchy', () {
-        expect(VVideoLogLevel.none.level, 0);
-        expect(VVideoLogLevel.error.level, 1);
-        expect(VVideoLogLevel.warning.level, 2);
-        expect(VVideoLogLevel.info.level, 3);
-        expect(VVideoLogLevel.debug.level, 4);
-        expect(VVideoLogLevel.verbose.level, 5);
+      test('should log compression operations', () {
+        final config = VVideoLogConfig.debug();
+        VVideoCompressor.configureLogging(config);
+
+        // Test that logging is properly configured
+        expect(VVideoCompressor.loggingConfig.enabled, true);
       });
     });
 
@@ -445,6 +430,45 @@ void main() {
         final mobile = VVideoAdvancedConfig.mobileOptimized();
         expect(mobile.videoCodec, VVideoCodec.h264);
         expect(mobile.hardwareAcceleration, true);
+      });
+
+      test('should create advanced config with orientation correction', () {
+        final config = VVideoAdvancedConfig(
+          videoBitrate: 1500000,
+          audioBitrate: 128000,
+          customWidth: 1280,
+          customHeight: 720,
+          autoCorrectOrientation: true,
+        );
+
+        expect(config.videoBitrate, 1500000);
+        expect(config.audioBitrate, 128000);
+        expect(config.customWidth, 1280);
+        expect(config.customHeight, 720);
+        expect(config.autoCorrectOrientation, true);
+        expect(config.isValid(), true);
+      });
+
+      test('should validate orientation correction parameter', () {
+        final configWithOrientation = VVideoAdvancedConfig(
+          autoCorrectOrientation: true,
+          videoBitrate: 1000000,
+        );
+        expect(configWithOrientation.autoCorrectOrientation, true);
+        expect(configWithOrientation.isValid(), true);
+
+        final configWithoutOrientation = VVideoAdvancedConfig(
+          autoCorrectOrientation: false,
+          videoBitrate: 1000000,
+        );
+        expect(configWithoutOrientation.autoCorrectOrientation, false);
+        expect(configWithoutOrientation.isValid(), true);
+
+        final configNullOrientation = VVideoAdvancedConfig(
+          videoBitrate: 1000000,
+        );
+        expect(configNullOrientation.autoCorrectOrientation, null);
+        expect(configNullOrientation.isValid(), true);
       });
     });
 

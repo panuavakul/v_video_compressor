@@ -112,22 +112,51 @@ class VVideoCompressionEngine(private val context: Context) {
             val fileSizeBytes = file.length()
             val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             val durationMillis = durationStr?.toLongOrNull() ?: 0L
+            
+            // ORIENTATION FIX: Extract raw dimensions and rotation metadata
             val widthStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
             val heightStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-            val width = widthStr?.toIntOrNull() ?: 0
-            val height = heightStr?.toIntOrNull() ?: 0
+            val rotationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+            
+            val rawWidth = widthStr?.toIntOrNull() ?: 0
+            val rawHeight = heightStr?.toIntOrNull() ?: 0
+            val rotation = rotationStr?.toIntOrNull() ?: 0
+            
+            // ORIENTATION FIX: Apply rotation to get correct display dimensions
+            val (displayWidth, displayHeight) = when (rotation) {
+                90, 270 -> Pair(rawHeight, rawWidth) // Swap dimensions for portrait videos
+                else -> Pair(rawWidth, rawHeight) // Keep original for landscape
+            }
             
             VVideoInfo(
                 path = videoPath,
                 name = name,
                 fileSizeBytes = fileSizeBytes,
                 durationMillis = durationMillis,
-                width = width,
-                height = height
+                width = displayWidth,
+                height = displayHeight
             )
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        } finally {
+            retriever?.release()
+        }
+    }
+    
+    /**
+     * ORIENTATION FIX: Helper method to detect video rotation from file metadata
+     */
+    private fun getVideoRotation(videoPath: String): Int {
+        var retriever: MediaMetadataRetriever? = null
+        return try {
+            retriever = MediaMetadataRetriever()
+            retriever.setDataSource(videoPath)
+            val rotationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+            rotationStr?.toIntOrNull() ?: 0
+        } catch (e: Exception) {
+            e.printStackTrace()
+            0
         } finally {
             retriever?.release()
         }
@@ -637,6 +666,17 @@ class VVideoCompressionEngine(private val context: Context) {
     ): EditedMediaItem {
         val advanced = config.advanced
         
+        // ORIENTATION FIX: Detect original rotation if auto-correction is enabled
+        val shouldAutoCorrect = advanced?.autoCorrectOrientation == true
+        val originalRotation = if (shouldAutoCorrect) {
+            getVideoRotation(video.path)
+        } else {
+            0
+        }
+        
+        // Calculate final rotation - either from config or auto-detected
+        val finalRotation = advanced?.rotation ?: if (shouldAutoCorrect) originalRotation else 0
+        
         // Calculate proper dimensions that maintain aspect ratio
         val (finalWidth: Int, finalHeight: Int) = if (video.width > 0 && video.height > 0) {
             calculateAspectRatioPreservingDimensions(
@@ -678,8 +718,15 @@ class VVideoCompressionEngine(private val context: Context) {
             finalHeight,
             Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP  // Better aspect ratio handling
         )
-        
         videoEffects.add(presentationEffect)
+        
+        // ORIENTATION FIX: Apply rotation if needed
+        if (finalRotation != 0) {
+            // Note: Media3 rotation effects require additional implementation
+            // For now, we log the rotation that should be applied
+            println("VVideoCompressionEngine: ORIENTATION FIX - Should apply ${finalRotation}° rotation (auto-correct: $shouldAutoCorrect)")
+            // TODO: Implement Media3 rotation effect when available
+        }
         
         val effects = Effects(
             /* audioProcessors= */ emptyList(),

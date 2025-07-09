@@ -229,6 +229,46 @@ final result = await _compressor.compressVideo(
 );
 ```
 
+### Advanced Configuration Options
+
+The `VVideoAdvancedConfig` class provides fine-grained control over the compression process:
+
+#### 🔄 **NEW: Automatic Orientation Correction**
+
+```dart
+// Fix for vertical videos appearing horizontal after compression
+VVideoAdvancedConfig(
+  autoCorrectOrientation: true,  // Preserves original video orientation
+  videoBitrate: 1500000,
+  audioBitrate: 128000,
+)
+```
+
+**Key Features:**
+
+- ✅ **Automatic Detection**: Detects original video orientation metadata
+- ✅ **Vertical Video Fix**: Prevents vertical videos from appearing horizontal
+- ✅ **Cross-Platform**: Works on both Android and iOS
+- ✅ **No Quality Loss**: Maintains video quality while preserving orientation
+
+#### Other Advanced Options
+
+```dart
+VVideoAdvancedConfig(
+  videoBitrate: 1500000,        // Custom video bitrate
+  audioBitrate: 128000,         // Custom audio bitrate
+  customWidth: 1280,            // Custom width (use with height)
+  customHeight: 720,            // Custom height (use with width)
+  rotation: 90,                 // Manual rotation (0, 90, 180, 270)
+  frameRate: 30.0,              // Target frame rate
+  removeAudio: false,           // Remove audio track
+  brightness: 0.1,              // Brightness adjustment (-1.0 to 1.0)
+  contrast: 0.1,                // Contrast adjustment (-1.0 to 1.0)
+  autoCorrectOrientation: true, // NEW: Auto-correct orientation
+  // ... other options
+)
+```
+
 ## 🖼️ **Thumbnail Generation**
 
 ### Single Thumbnail

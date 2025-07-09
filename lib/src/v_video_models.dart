@@ -124,6 +124,9 @@ class VVideoAdvancedConfig {
   /// Remove audio track completely
   final bool? removeAudio;
 
+  /// Auto-correct video orientation (preserves original orientation)
+  final bool? autoCorrectOrientation;
+
   /// Video brightness adjustment (-1.0 to 1.0)
   final double? brightness;
 
@@ -172,6 +175,7 @@ class VVideoAdvancedConfig {
     this.audioSampleRate,
     this.audioChannels,
     this.removeAudio,
+    this.autoCorrectOrientation,
     this.brightness,
     this.contrast,
     this.saturation,
@@ -282,6 +286,7 @@ class VVideoAdvancedConfig {
       'audioSampleRate': audioSampleRate,
       'audioChannels': audioChannels,
       'removeAudio': removeAudio,
+      'autoCorrectOrientation': autoCorrectOrientation,
       'brightness': brightness,
       'contrast': contrast,
       'saturation': saturation,
@@ -293,6 +298,50 @@ class VVideoAdvancedConfig {
       'noiseReduction': noiseReduction,
       'monoAudio': monoAudio,
     };
+  }
+
+  factory VVideoAdvancedConfig.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return VVideoAdvancedConfig();
+
+    return VVideoAdvancedConfig(
+      videoBitrate: map['videoBitrate']?.toInt(),
+      audioBitrate: map['audioBitrate']?.toInt(),
+      customWidth: map['customWidth']?.toInt(),
+      customHeight: map['customHeight']?.toInt(),
+      frameRate: map['frameRate']?.toDouble(),
+      videoCodec: VVideoCodec.values.cast<VVideoCodec?>().firstWhere(
+            (codec) => codec?.value == map['videoCodec'],
+            orElse: () => null,
+          ),
+      audioCodec: VAudioCodec.values.cast<VAudioCodec?>().firstWhere(
+            (codec) => codec?.value == map['audioCodec'],
+            orElse: () => null,
+          ),
+      encodingSpeed: VEncodingSpeed.values.cast<VEncodingSpeed?>().firstWhere(
+            (speed) => speed?.value == map['encodingSpeed'],
+            orElse: () => null,
+          ),
+      crf: map['crf']?.toInt(),
+      twoPassEncoding: map['twoPassEncoding'],
+      hardwareAcceleration: map['hardwareAcceleration'],
+      trimStartMs: map['trimStartMs']?.toInt(),
+      trimEndMs: map['trimEndMs']?.toInt(),
+      rotation: map['rotation']?.toInt(),
+      audioSampleRate: map['audioSampleRate']?.toInt(),
+      audioChannels: map['audioChannels']?.toInt(),
+      removeAudio: map['removeAudio'],
+      autoCorrectOrientation: map['autoCorrectOrientation'],
+      brightness: map['brightness']?.toDouble(),
+      contrast: map['contrast']?.toDouble(),
+      saturation: map['saturation']?.toDouble(),
+      variableBitrate: map['variableBitrate'],
+      keyframeInterval: map['keyframeInterval']?.toInt(),
+      bFrames: map['bFrames']?.toInt(),
+      reducedFrameRate: map['reducedFrameRate']?.toDouble(),
+      aggressiveCompression: map['aggressiveCompression'],
+      noiseReduction: map['noiseReduction'],
+      monoAudio: map['monoAudio'],
+    );
   }
 
   /// Creates a maximum compression configuration for smallest file sizes
@@ -317,6 +366,7 @@ class VVideoAdvancedConfig {
       monoAudio: !keepAudio ? null : true, // Mono audio if keeping audio
       audioSampleRate: keepAudio ? 22050 : null, // Lower sample rate
       audioChannels: keepAudio ? 1 : null, // Mono audio
+      autoCorrectOrientation: true, // Preserve original orientation
     );
   }
 
@@ -334,6 +384,7 @@ class VVideoAdvancedConfig {
       aggressiveCompression: true, // Enable aggressive settings
       audioSampleRate: 44100, // Standard sample rate
       audioChannels: 2, // Stereo audio
+      autoCorrectOrientation: true, // Critical for social media vertical videos
     );
   }
 
@@ -351,6 +402,7 @@ class VVideoAdvancedConfig {
       reducedFrameRate: 30.0, // 30 FPS
       audioSampleRate: 44100, // Standard sample rate
       audioChannels: 2, // Stereo audio
+      autoCorrectOrientation: true, // Essential for mobile vertical videos
     );
   }
 }

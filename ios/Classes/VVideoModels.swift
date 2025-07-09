@@ -99,6 +99,7 @@ struct VVideoAdvancedConfig {
     let audioSampleRate: Int?
     let audioChannels: Int?
     let removeAudio: Bool?
+    let autoCorrectOrientation: Bool?
     let brightness: Double?
     let contrast: Double?
     let saturation: Double?
@@ -131,6 +132,7 @@ struct VVideoAdvancedConfig {
             audioSampleRate: map["audioSampleRate"] as? Int,
             audioChannels: map["audioChannels"] as? Int,
             removeAudio: map["removeAudio"] as? Bool,
+            autoCorrectOrientation: map["autoCorrectOrientation"] as? Bool,
             brightness: map["brightness"] as? Double,
             contrast: map["contrast"] as? Double,
             saturation: map["saturation"] as? Double,

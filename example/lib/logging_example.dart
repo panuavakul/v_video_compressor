@@ -365,6 +365,7 @@ class _LoggingExampleWidgetState extends State<LoggingExampleWidget> {
   }
 
   Future<void> _testCompression() async {
+
     try {
       // This will likely fail since it's a test path, but will show logging
       final result = await _compressor.compressVideo(
