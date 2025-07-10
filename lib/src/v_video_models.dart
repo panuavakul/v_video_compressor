@@ -71,6 +71,20 @@ enum VThumbnailFormat {
   final String extension;
 }
 
+/// Compression progress status
+enum VVideoCompressionStatus {
+  started('STARTED', 'Compression started'),
+  progressing('PROGRESSING', 'Compression in progress'),
+  completed('COMPLETED', 'Compression completed successfully'),
+  failed('FAILED', 'Compression failed'),
+  cancelled('CANCELLED', 'Compression cancelled');
+
+  const VVideoCompressionStatus(this.value, this.description);
+
+  final String value;
+  final String description;
+}
+
 /// Advanced video compression configuration
 class VVideoAdvancedConfig {
   /// Custom video bitrate in bits per second (overrides quality preset)
@@ -494,6 +508,33 @@ class VVideoCompressionConfig {
   /// Whether to delete the original video file after compression
   final bool deleteOriginal;
 
+  /// Whether to save the compressed video to gallery
+  final bool saveToGallery;
+
+  /// Whether to include audio in the compressed video
+  final bool includeAudio;
+
+  /// Whether to include metadata in the compressed video
+  final bool includeMetadata;
+
+  /// Whether to optimize for streaming
+  final bool optimizeForStreaming;
+
+  /// Whether to copy metadata from original video
+  final bool copyMetadata;
+
+  /// Whether to use hardware acceleration
+  final bool useHardwareAcceleration;
+
+  /// Whether to use fast start
+  final bool useFastStart;
+
+  /// Whether to use two pass encoding
+  final bool useTwoPassEncoding;
+
+  /// Whether to use variable bitrate
+  final bool useVariableBitrate;
+
   /// Advanced compression settings (optional)
   final VVideoAdvancedConfig? advanced;
 
@@ -501,24 +542,60 @@ class VVideoCompressionConfig {
     required this.quality,
     this.outputPath,
     this.deleteOriginal = false,
+    this.saveToGallery = false,
+    this.includeAudio = true,
+    this.includeMetadata = true,
+    this.optimizeForStreaming = true,
+    this.copyMetadata = true,
+    this.useHardwareAcceleration = true,
+    this.useFastStart = true,
+    this.useTwoPassEncoding = false,
+    this.useVariableBitrate = true,
     this.advanced,
   });
 
   const VVideoCompressionConfig.high({
     this.outputPath,
     this.deleteOriginal = false,
+    this.saveToGallery = false,
+    this.includeAudio = true,
+    this.includeMetadata = true,
+    this.optimizeForStreaming = true,
+    this.copyMetadata = true,
+    this.useHardwareAcceleration = true,
+    this.useFastStart = true,
+    this.useTwoPassEncoding = false,
+    this.useVariableBitrate = true,
     this.advanced,
   }) : quality = VVideoCompressQuality.high;
 
   const VVideoCompressionConfig.medium({
     this.outputPath,
     this.deleteOriginal = false,
+    this.saveToGallery = false,
+    this.includeAudio = true,
+    this.includeMetadata = true,
+    this.optimizeForStreaming = true,
+    this.copyMetadata = true,
+    this.useHardwareAcceleration = true,
+    this.useFastStart = true,
+    this.useTwoPassEncoding = false,
+    this.useVariableBitrate = true,
     this.advanced,
   }) : quality = VVideoCompressQuality.medium;
 
   const VVideoCompressionConfig.low({
     this.outputPath,
     this.deleteOriginal = false,
+    this.saveToGallery = false,
+    this.includeAudio = true,
+    this.includeMetadata = true,
+    this.optimizeForStreaming = true,
+    this.copyMetadata = true,
+    this.useHardwareAcceleration = true,
+    this.useFastStart = true,
+    this.useTwoPassEncoding = false,
+    this.useVariableBitrate = true,
     this.advanced,
   }) : quality = VVideoCompressQuality.low;
 
@@ -535,8 +612,45 @@ class VVideoCompressionConfig {
       'quality': quality.value,
       'outputPath': outputPath,
       'deleteOriginal': deleteOriginal,
+      'saveToGallery': saveToGallery,
+      'includeAudio': includeAudio,
+      'includeMetadata': includeMetadata,
+      'optimizeForStreaming': optimizeForStreaming,
+      'copyMetadata': copyMetadata,
+      'useHardwareAcceleration': useHardwareAcceleration,
+      'useFastStart': useFastStart,
+      'useTwoPassEncoding': useTwoPassEncoding,
+      'useVariableBitrate': useVariableBitrate,
       'advanced': advanced?.toMap(),
     };
+  }
+
+  factory VVideoCompressionConfig.fromMap(Map<String, dynamic> map) {
+    return VVideoCompressionConfig(
+      quality: VVideoCompressQuality.values.firstWhere(
+        (q) => q.value == map['quality'],
+        orElse: () => VVideoCompressQuality.medium,
+      ),
+      outputPath: map['outputPath'],
+      deleteOriginal: map['deleteOriginal'] ?? false,
+      saveToGallery: map['saveToGallery'] ?? false,
+      includeAudio: map['includeAudio'] ?? true,
+      includeMetadata: map['includeMetadata'] ?? true,
+      optimizeForStreaming: map['optimizeForStreaming'] ?? true,
+      copyMetadata: map['copyMetadata'] ?? true,
+      useHardwareAcceleration: map['useHardwareAcceleration'] ?? true,
+      useFastStart: map['useFastStart'] ?? true,
+      useTwoPassEncoding: map['useTwoPassEncoding'] ?? false,
+      useVariableBitrate: map['useVariableBitrate'] ?? true,
+      advanced: map['advanced'] != null
+          ? VVideoAdvancedConfig.fromMap(map['advanced'])
+          : null,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'VVideoCompressionConfig(quality: $quality, outputPath: $outputPath, deleteOriginal: $deleteOriginal, saveToGallery: $saveToGallery, includeAudio: $includeAudio, includeMetadata: $includeMetadata, optimizeForStreaming: $optimizeForStreaming, copyMetadata: $copyMetadata, useHardwareAcceleration: $useHardwareAcceleration, useFastStart: $useFastStart, useTwoPassEncoding: $useTwoPassEncoding, useVariableBitrate: $useVariableBitrate, advanced: $advanced)';
   }
 }
 
@@ -561,6 +675,15 @@ class VVideoCompressionEstimate {
       compressionRatio: map['compressionRatio']?.toDouble() ?? 0.0,
       bitrateMbps: map['bitrateMbps']?.toDouble() ?? 0.0,
     );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'estimatedSizeBytes': estimatedSizeBytes,
+      'estimatedSizeFormatted': estimatedSizeFormatted,
+      'compressionRatio': compressionRatio,
+      'bitrateMbps': bitrateMbps,
+    };
   }
 }
 
@@ -609,6 +732,22 @@ class VVideoCompressionResult {
       compressedResolution: map['compressedResolution'] ?? '',
       spaceSaved: map['spaceSaved']?.toInt() ?? 0,
     );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'originalVideo': originalVideo.toMap(),
+      'compressedFilePath': compressedFilePath,
+      'galleryUri': galleryUri,
+      'originalSizeBytes': originalSizeBytes,
+      'compressedSizeBytes': compressedSizeBytes,
+      'compressionRatio': compressionRatio,
+      'timeTaken': timeTaken,
+      'quality': quality.value,
+      'originalResolution': originalResolution,
+      'compressedResolution': compressedResolution,
+      'spaceSaved': spaceSaved,
+    };
   }
 
   String get spaceSavedFormatted => _formatFileSize(spaceSaved);
@@ -760,5 +899,105 @@ class VVideoThumbnailResult {
     } else {
       return '$fileSizeBytes B';
     }
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'thumbnailPath': thumbnailPath,
+      'width': width,
+      'height': height,
+      'fileSizeBytes': fileSizeBytes,
+      'format': format.value,
+      'timeMs': timeMs,
+    };
+  }
+}
+
+/// Typed model for video compression progress events
+class VVideoProgressEvent {
+  /// Progress value from 0.0 to 1.0
+  final double progress;
+
+  /// Optional video path being processed
+  final String? videoPath;
+
+  /// Optional current video index for batch operations
+  final int? currentIndex;
+
+  /// Optional total number of videos for batch operations
+  final int? total;
+
+  /// Optional compression ID for tracking specific operations
+  final String? compressionId;
+
+  const VVideoProgressEvent({
+    required this.progress,
+    this.videoPath,
+    this.currentIndex,
+    this.total,
+    this.compressionId,
+  });
+
+  /// Create from native platform data
+  factory VVideoProgressEvent.fromMap(Map<String, dynamic> map) {
+    return VVideoProgressEvent(
+      progress: (map['progress'] as num).toDouble(),
+      videoPath: map['videoPath'] as String?,
+      currentIndex: map['currentIndex'] as int?,
+      total: map['total'] as int?,
+      compressionId: map['compressionId'] as String?,
+    );
+  }
+
+  /// Convert to map for native platform
+  Map<String, dynamic> toMap() {
+    return {
+      'progress': progress,
+      if (videoPath != null) 'videoPath': videoPath,
+      if (currentIndex != null) 'currentIndex': currentIndex,
+      if (total != null) 'total': total,
+      if (compressionId != null) 'compressionId': compressionId,
+    };
+  }
+
+  /// Progress as percentage (0-100)
+  double get progressPercentage => progress * 100;
+
+  /// Whether this is a batch operation
+  bool get isBatchOperation => currentIndex != null && total != null;
+
+  /// Formatted progress string
+  String get progressFormatted => '${progressPercentage.toStringAsFixed(1)}%';
+
+  /// Batch progress description
+  String get batchProgressDescription {
+    if (!isBatchOperation) return progressFormatted;
+    return 'Video ${currentIndex! + 1}/${total!} - $progressFormatted';
+  }
+
+  @override
+  String toString() {
+    return 'VVideoProgressEvent(progress: $progress, videoPath: $videoPath, '
+        'currentIndex: $currentIndex, total: $total, compressionId: $compressionId)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is VVideoProgressEvent &&
+        other.progress == progress &&
+        other.videoPath == videoPath &&
+        other.currentIndex == currentIndex &&
+        other.total == total &&
+        other.compressionId == compressionId;
+  }
+
+  @override
+  int get hashCode {
+    return progress.hashCode ^
+        videoPath.hashCode ^
+        currentIndex.hashCode ^
+        total.hashCode ^
+        compressionId.hashCode;
   }
 }

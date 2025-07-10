@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'v_video_compressor_platform_interface.dart';
 import 'v_video_compressor.dart';
+import 'src/v_video_models.dart';
 
 /// Internal logging utility for method channel operations
 class _MethodChannelLogger {
@@ -202,12 +203,12 @@ class MethodChannelVVideoCompressor extends VVideoCompressorPlatform {
         progressSubscription = eventChannel.receiveBroadcastStream().listen((
           event,
         ) {
-          if (event is Map && event.containsKey('progress')) {
-            final progress = (event['progress'] as num).toDouble();
-            _MethodChannelLogger.info(
-                'Compression progress: ${(progress * 100).toStringAsFixed(1)}%');
-            onProgress(progress);
-          }
+          final progressEvent = VVideoProgressEvent.fromMap(
+            Map<String, dynamic>.from(event as Map),
+          );
+          _MethodChannelLogger.info(
+              'Compression progress: ${progressEvent.progressFormatted}');
+          onProgress(progressEvent.progress);
         }, onError: (error) {
           _MethodChannelLogger.error('Progress subscription error', error);
         });
@@ -265,14 +266,12 @@ class MethodChannelVVideoCompressor extends VVideoCompressorPlatform {
         progressSubscription = eventChannel.receiveBroadcastStream().listen((
           event,
         ) {
-          if (event is Map &&
-              event.containsKey('progress') &&
-              event.containsKey('currentIndex') &&
-              event.containsKey('total')) {
-            final progress = (event['progress'] as num).toDouble();
-            final currentIndex = event['currentIndex'] as int;
-            final total = event['total'] as int;
-            onProgress(progress, currentIndex, total);
+          final progressEvent = VVideoProgressEvent.fromMap(
+            Map<String, dynamic>.from(event as Map),
+          );
+          if (progressEvent.isBatchOperation) {
+            onProgress(progressEvent.progress, progressEvent.currentIndex!,
+                progressEvent.total!);
           }
         });
       }

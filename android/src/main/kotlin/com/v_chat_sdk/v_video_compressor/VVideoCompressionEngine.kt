@@ -23,10 +23,56 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import kotlin.math.roundToLong
 import kotlin.math.abs
+
+
 import kotlinx.coroutines.*
 import android.app.ActivityManager
 import android.os.StatFs
 import java.util.concurrent.ConcurrentHashMap
+// 4K FIX: Add imports for device capability detection
+import android.os.Build
+import android.media.MediaCodecList
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+
+/**
+ * 4K FIX: Data classes for capability detection results
+ */
+data class DeviceCapabilityResult(
+    val canHandle4K: Boolean,
+    val reason: String,
+    val details: CapabilityDetails? = null
+)
+
+data class CapabilityDetails(
+    val totalMemoryMB: Long,
+    val availableMemoryMB: Long,
+    val cpuCores: Int,
+    val cpuArchitecture: String,
+    val cpuFrequencyMHz: Long?,
+    val performanceScore: Int?,
+    val hasCodecSupport: Boolean
+)
+
+data class CapabilityCheckResult(
+    val isSupported: Boolean,
+    val message: String
+)
+
+data class MemoryAnalysisResult(
+    val isMemorySufficient: Boolean,
+    val reason: String,
+    val totalMemoryMB: Long,
+    val availableMemoryMB: Long
+)
+
+data class CpuAnalysisResult(
+    val isCpuSufficient: Boolean,
+    val reason: String,
+    val cores: Int,
+    val architecture: String,
+    val frequencyMHz: Long?
+)
 
 /**
  * Enhanced compression engine with real-time progress tracking and cancellation support
@@ -48,6 +94,9 @@ class VVideoCompressionEngine(private val context: Context) {
     private val fileSizeCache = ConcurrentHashMap<String, Long>()
     private var lastFileSizeCheck = 0L
     private var lastFileSize = 0L
+    
+    // 4K FIX: Device capability cache
+    private var deviceCapabilityCache: DeviceCapabilityResult? = null
     
     companion object {
         // Improved bitrate settings for better compression (Android Quick Fix)
@@ -85,6 +134,328 @@ class VVideoCompressionEngine(private val context: Context) {
         private const val MIN_STORAGE_THRESHOLD_MB = 200 // Minimum 200MB free storage required
         private const val FILE_SIZE_CACHE_DURATION_MS = 500L // Cache file size for 500ms
         private const val MEMORY_CHECK_INTERVAL_MS = 5000L // Check memory every 5 seconds
+        
+        // 4K FIX: Hardware capability thresholds
+        private const val MIN_MEMORY_FOR_4K_MB = 3000 // 3GB RAM minimum for 4K
+        private const val MIN_API_LEVEL_FOR_4K = 21 // Android 5.0+
+        private const val MAX_COMPRESSION_RETRIES = 3
+        private const val MIN_CPU_CORES_FOR_4K = 4 // Minimum 4 CPU cores for 4K
+        private const val MIN_CPU_FREQUENCY_MHZ = 1500 // Minimum 1.5GHz CPU frequency
+        private const val MIN_AVAILABLE_MEMORY_MB = 1000 // Minimum 1GB available memory
+        
+        // 4K FIX: Performance benchmark thresholds
+        private const val PERFORMANCE_TEST_ITERATIONS = 1000
+        private const val MIN_PERFORMANCE_SCORE = 50 // Minimum performance score for 4K
+    }
+    
+    // 4K FIX: Device capability detection methods
+    
+    /**
+     * Checks if the device can handle 4K video compression based on hardware capabilities
+     */
+    private fun canHandle4KCompression(): DeviceCapabilityResult {
+        // Return cached result if available
+        deviceCapabilityCache?.let { return it }
+        
+        val result = performCapabilityAnalysis()
+        deviceCapabilityCache = result
+        return result
+    }
+    
+    /**
+     * Performs comprehensive capability analysis
+     */
+    private fun performCapabilityAnalysis(): DeviceCapabilityResult {
+        val apiLevelCheck = checkApiLevel()
+        if (!apiLevelCheck.isSupported) {
+            return DeviceCapabilityResult(false, apiLevelCheck.message)
+        }
+        
+        val memoryDetails = analyzeMemoryCapabilities()
+        if (!memoryDetails.isMemorySufficient) {
+            return DeviceCapabilityResult(false, memoryDetails.reason)
+        }
+        
+        val cpuDetails = analyzeCpuCapabilities()
+        if (!cpuDetails.isCpuSufficient) {
+            return DeviceCapabilityResult(false, cpuDetails.reason)
+        }
+        
+        val codecSupported = hasCodecSupport()
+        if (!codecSupported) {
+            return DeviceCapabilityResult(false, "Device codecs do not support 4K compression")
+        }
+        
+        val performanceScore = measurePerformanceScore()
+        if (performanceScore < MIN_PERFORMANCE_SCORE) {
+            return DeviceCapabilityResult(
+                false, 
+                "Performance insufficient for 4K: score $performanceScore, minimum $MIN_PERFORMANCE_SCORE required"
+            )
+        }
+        
+        val details = CapabilityDetails(
+            totalMemoryMB = memoryDetails.totalMemoryMB,
+            availableMemoryMB = memoryDetails.availableMemoryMB,
+            cpuCores = cpuDetails.cores,
+            cpuArchitecture = cpuDetails.architecture,
+            cpuFrequencyMHz = cpuDetails.frequencyMHz,
+            performanceScore = performanceScore,
+            hasCodecSupport = codecSupported
+        )
+        
+        return DeviceCapabilityResult(
+            true, 
+            "Device capable of 4K compression", 
+            details
+        )
+    }
+    
+    /**
+     * Checks if Android API level supports 4K compression
+     */
+    private fun checkApiLevel(): CapabilityCheckResult {
+        return if (Build.VERSION.SDK_INT >= MIN_API_LEVEL_FOR_4K) {
+            CapabilityCheckResult(true, "API level ${Build.VERSION.SDK_INT} supports 4K")
+        } else {
+            CapabilityCheckResult(
+                false, 
+                "Android API level ${Build.VERSION.SDK_INT} too low (minimum: $MIN_API_LEVEL_FOR_4K)"
+            )
+        }
+    }
+    
+    /**
+     * Analyzes device memory capabilities for 4K compression
+     */
+    private fun analyzeMemoryCapabilities(): MemoryAnalysisResult {
+        activityManager.getMemoryInfo(memoryInfo)
+        val totalMemoryMB = memoryInfo.totalMem / (1024 * 1024)
+        val availableMemoryMB = memoryInfo.availMem / (1024 * 1024)
+        
+        return when {
+            totalMemoryMB < MIN_MEMORY_FOR_4K_MB -> MemoryAnalysisResult(
+                false,
+                "Insufficient total memory: ${totalMemoryMB}MB total, ${MIN_MEMORY_FOR_4K_MB}MB required",
+                totalMemoryMB,
+                availableMemoryMB
+            )
+            availableMemoryMB < MIN_AVAILABLE_MEMORY_MB -> MemoryAnalysisResult(
+                false,
+                "Insufficient available memory: ${availableMemoryMB}MB available, ${MIN_AVAILABLE_MEMORY_MB}MB required",
+                totalMemoryMB,
+                availableMemoryMB
+            )
+            else -> MemoryAnalysisResult(
+                true,
+                "Memory sufficient for 4K compression",
+                totalMemoryMB,
+                availableMemoryMB
+            )
+        }
+    }
+    
+    /**
+     * Analyzes CPU capabilities for 4K compression
+     */
+    private fun analyzeCpuCapabilities(): CpuAnalysisResult {
+        val cpuCores = Runtime.getRuntime().availableProcessors()
+        val architecture = getCpuArchitecture()
+        val frequencyMHz = getCpuFrequencyMHz()
+        
+        return when {
+            cpuCores < MIN_CPU_CORES_FOR_4K -> CpuAnalysisResult(
+                false,
+                "Insufficient CPU cores: $cpuCores cores, ${MIN_CPU_CORES_FOR_4K} required",
+                cpuCores,
+                architecture,
+                frequencyMHz
+            )
+            !isArchitectureSupported(architecture) -> CpuAnalysisResult(
+                false,
+                "CPU architecture not optimal for 4K: $architecture",
+                cpuCores,
+                architecture,
+                frequencyMHz
+            )
+            frequencyMHz != null && frequencyMHz < MIN_CPU_FREQUENCY_MHZ -> CpuAnalysisResult(
+                false,
+                "CPU frequency too low: ${frequencyMHz}MHz, ${MIN_CPU_FREQUENCY_MHZ}MHz required",
+                cpuCores,
+                architecture,
+                frequencyMHz
+            )
+            else -> CpuAnalysisResult(
+                true,
+                "CPU sufficient for 4K compression",
+                cpuCores,
+                architecture,
+                frequencyMHz
+            )
+        }
+    }
+    
+    /**
+     * Gets CPU architecture information
+     */
+    private fun getCpuArchitecture(): String {
+        return Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"
+    }
+    
+    /**
+     * Checks if CPU architecture is supported for 4K compression
+     */
+    private fun isArchitectureSupported(architecture: String): Boolean {
+        return architecture.contains("arm64") || architecture.contains("x86_64")
+    }
+    
+    /**
+     * Gets CPU frequency in MHz from system files
+     */
+    private fun getCpuFrequencyMHz(): Long? {
+        val cpuFreqFiles = listOf(
+            "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
+            "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq"
+        )
+        
+        for (freqFile in cpuFreqFiles) {
+            try {
+                val file = java.io.File(freqFile)
+                if (file.exists() && file.canRead()) {
+                    val freqKHz = file.readText().trim().toLongOrNull()
+                    if (freqKHz != null) {
+                        return freqKHz / 1000
+                    }
+                }
+            } catch (e: Exception) {
+                continue
+            }
+        }
+        return null
+    }
+    
+    /**
+     * Checks if device codecs support 4K video encoding
+     */
+    private fun hasCodecSupport(): Boolean {
+        return try {
+            val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+            codecList.codecInfos.any { codecInfo ->
+                isCodecSupporting4K(codecInfo)
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * Checks if a specific codec supports 4K encoding
+     */
+    private fun isCodecSupporting4K(codecInfo: MediaCodecInfo): Boolean {
+        if (!codecInfo.isEncoder) return false
+        
+        return codecInfo.supportedTypes.any { type ->
+            type.startsWith("video/") && checkCodecFormat(codecInfo, type)
+        }
+    }
+    
+    /**
+     * Checks if codec format supports 4K resolution
+     */
+    private fun checkCodecFormat(codecInfo: MediaCodecInfo, mimeType: String): Boolean {
+        return try {
+            val capabilities = codecInfo.getCapabilitiesForType(mimeType)
+            val videoCapabilities = capabilities.videoCapabilities
+            videoCapabilities?.isSizeSupported(3840, 2160) == true
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * Measures device performance score with lightweight benchmark
+     */
+    private fun measurePerformanceScore(): Int {
+        return try {
+            val startTime = System.nanoTime()
+            performLightweightBenchmark()
+            val endTime = System.nanoTime()
+            
+            calculatePerformanceScore(startTime, endTime)
+        } catch (e: Exception) {
+            MIN_PERFORMANCE_SCORE // Return minimum score on error to allow compression
+        }
+    }
+    
+    /**
+     * Performs lightweight computational benchmark
+     */
+    private fun performLightweightBenchmark() {
+        var result = 0.0
+        for (i in 0 until PERFORMANCE_TEST_ITERATIONS) {
+            result += Math.sqrt(i.toDouble()) * Math.sin(i.toDouble())
+            result += Math.cos(i.toDouble()) / (i + 1.0)
+        }
+    }
+    
+    /**
+     * Calculates performance score based on benchmark duration
+     */
+    private fun calculatePerformanceScore(startTime: Long, endTime: Long): Int {
+        val durationMs = (endTime - startTime) / 1_000_000
+        return if (durationMs > 0) {
+            (PERFORMANCE_TEST_ITERATIONS.toDouble() / durationMs * 100).toInt()
+        } else {
+            100
+        }
+    }
+    
+
+    
+    /**
+     * Determines optimal quality for device and video resolution
+     */
+    private fun getOptimalQuality(
+        videoWidth: Int,
+        videoHeight: Int,
+        requestedQuality: VVideoCompressQuality
+    ): VVideoCompressQuality {
+        val is4K = videoWidth >= 3840 || videoHeight >= 2160
+        
+        if (is4K) {
+            val capabilityResult = canHandle4KCompression()
+            if (!capabilityResult.canHandle4K) {
+                println("4K FIX: Downgrading quality due to device limitations: ${capabilityResult.reason}")
+                return downgradeQuality(requestedQuality)
+            }
+        }
+        
+        return requestedQuality
+    }
+    
+    /**
+     * Downgrades video quality to next lower level
+     */
+    private fun downgradeQuality(currentQuality: VVideoCompressQuality): VVideoCompressQuality {
+        return when (currentQuality) {
+            VVideoCompressQuality.HIGH -> VVideoCompressQuality.MEDIUM
+            VVideoCompressQuality.MEDIUM -> VVideoCompressQuality.LOW
+            VVideoCompressQuality.LOW -> VVideoCompressQuality.VERY_LOW
+            VVideoCompressQuality.VERY_LOW -> VVideoCompressQuality.ULTRA_LOW
+            VVideoCompressQuality.ULTRA_LOW -> VVideoCompressQuality.ULTRA_LOW
+        }
+    }
+    
+    /**
+     * Handles compression errors with fallback logic
+     */
+    private fun isCodecCapacityError(error: Throwable): Boolean {
+        val errorMessage = error.message?.lowercase() ?: ""
+        return errorMessage.contains("codec capacity") ||
+               errorMessage.contains("failed to initialize") ||
+               errorMessage.contains("codec reported err") ||
+               errorMessage.contains("insufficient resources") ||
+               errorMessage.contains("encoder") && errorMessage.contains("failed")
     }
     
     /**
@@ -250,7 +621,7 @@ class VVideoCompressionEngine(private val context: Context) {
     }
     
     /**
-     * Compresses a single video file with real-time progress tracking
+     * Compresses a single video file with real-time progress tracking and 4K fallback support
      */
     fun compressVideo(
         videoInfo: VVideoInfo,
@@ -263,6 +634,23 @@ class VVideoCompressionEngine(private val context: Context) {
             return
         }
         
+        // 4K FIX: Start with optimized quality based on device capabilities
+        val optimalQuality = getOptimalQuality(videoInfo.width, videoInfo.height, config.quality)
+        var currentConfig = config.copy(quality = optimalQuality)
+        
+        // 4K FIX: Retry compression with progressively lower quality on failure
+        compressVideoWithRetry(videoInfo, currentConfig, callback, retryCount = 0)
+    }
+    
+    /**
+     * 4K FIX: Compresses video with retry logic for codec capacity failures
+     */
+    private fun compressVideoWithRetry(
+        videoInfo: VVideoInfo,
+        config: VVideoCompressionConfig,
+        callback: CompressionCallback,
+        retryCount: Int
+    ) {
         val outputFile = createOutputFile(config.outputPath, videoInfo, config.quality)
         val startTime = System.currentTimeMillis()
         
@@ -373,6 +761,24 @@ class VVideoCompressionEngine(private val context: Context) {
                             // Ignore cleanup errors
                         }
                         
+                        // 4K FIX: Check if this is a codec capacity error and retry if possible
+                        if (retryCount < MAX_COMPRESSION_RETRIES && isCodecCapacityError(exportException)) {
+                            val nextQuality = getNextLowerQuality(config.quality)
+                            if (nextQuality != null) {
+                                val retryMessage = "Codec capacity issue detected. Retrying with lower quality (${nextQuality.displayName})"
+                                println("4K FIX: $retryMessage")
+                                
+                                // Notify about the retry attempt
+                                mainHandler.post {
+                                    callback.onProgress(0.0f) // Reset progress for retry
+                                }
+                                
+                                val retryConfig = config.copy(quality = nextQuality)
+                                compressVideoWithRetry(videoInfo, retryConfig, callback, retryCount + 1)
+                                return
+                            }
+                        }
+                        
                         // Improved error handling from Android Quick Fix
                         val detailedError = when (exportException.errorCode) {
                             ExportException.ERROR_CODE_FAILED_RUNTIME_CHECK ->
@@ -380,7 +786,7 @@ class VVideoCompressionEngine(private val context: Context) {
                             ExportException.ERROR_CODE_IO_FILE_NOT_FOUND ->
                                 "Video file not found"
                             ExportException.ERROR_CODE_ENCODER_INIT_FAILED ->
-                                "Failed to initialize video encoder"
+                                "Failed to initialize video encoder. Device may not support this resolution/quality. Try using lower quality settings."
                             else -> exportException.message ?: "Unknown compression error"
                         }
                         
@@ -397,7 +803,32 @@ class VVideoCompressionEngine(private val context: Context) {
             
         } catch (e: Exception) {
             stopProgressTracking()
+            
+            // 4K FIX: Check if this is a codec capacity error and retry if possible
+            if (retryCount < MAX_COMPRESSION_RETRIES && isCodecCapacityError(e)) {
+                val nextQuality = getNextLowerQuality(config.quality)
+                if (nextQuality != null) {
+                    val retryMessage = "Codec initialization failed. Retrying with lower quality (${nextQuality.displayName})"
+                    println("4K FIX: $retryMessage")
+                    
+                    val retryConfig = config.copy(quality = nextQuality)
+                    compressVideoWithRetry(videoInfo, retryConfig, callback, retryCount + 1)
+                    return
+                }
+            }
+            
             callback.onError(e.message ?: "Failed to start compression")
+        }
+    }
+    
+    /**
+     * 4K FIX: Gets the next lower quality level for retry attempts
+     */
+    private fun getNextLowerQuality(currentQuality: VVideoCompressQuality): VVideoCompressQuality? {
+        return if (currentQuality == VVideoCompressQuality.ULTRA_LOW) {
+            null // No lower quality available
+        } else {
+            downgradeQuality(currentQuality)
         }
     }
     

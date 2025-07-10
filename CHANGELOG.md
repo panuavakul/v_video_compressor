@@ -1,3 +1,155 @@
+## [1.2.0] - 2024-12-21 🌐 **Global Progress Stream**
+
+### 🚀 **NEW: Typed Global Progress Stream**
+
+This release introduces a major improvement to progress tracking with a fully typed global stream that can be accessed from anywhere in your app.
+
+#### **🎯 Key Features**
+
+- **✅ NEW: Global Progress Stream**: Access compression progress from anywhere in your app
+- **✅ Fully Typed**: `VVideoProgressEvent` with comprehensive progress information
+- **✅ Multiple Convenience Methods**: Choose the best method for your use case
+- **✅ Automatic Stream Management**: Lifecycle handled automatically
+- **✅ Broadcast Support**: Multiple listeners can subscribe simultaneously
+- **✅ Batch Operation Support**: Built-in batch progress tracking and detection
+
+#### **🔧 Usage**
+
+```dart
+// Method 1: Listen to global stream directly
+VVideoCompressor.progressStream.listen((event) {
+  print('Progress: ${event.progressFormatted}');
+  if (event.isBatchOperation) {
+    print('Batch: ${event.batchProgressDescription}');
+  }
+});
+
+// Method 2: Simple progress callback
+VVideoCompressor.listenToProgress((progress) {
+  print('Progress: ${(progress * 100).toInt()}%');
+});
+
+// Method 3: Batch progress callback
+VVideoCompressor.listenToBatchProgress((progress, currentIndex, total) {
+  print('Batch: Video ${currentIndex + 1}/$total - ${(progress * 100).toInt()}%');
+});
+```
+
+#### **📱 Problem Solved**
+
+**Before:** Required passing callbacks and checking `Map` types manually
+
+```dart
+// Old way - complex and error-prone
+progressSubscription = eventChannel.receiveBroadcastStream().listen((event) {
+  if (event is Map && event.containsKey('progress')) {
+    final progress = (event['progress'] as num).toDouble();
+    onProgress(progress);
+  }
+});
+```
+
+**After:** Fully typed global stream accessible from anywhere
+
+```dart
+// New way - simple and type-safe
+VVideoCompressor.progressStream.listen((event) {
+  print('Progress: ${event.progressFormatted}');
+});
+```
+
+#### **🎨 Enhanced Progress Information**
+
+The new `VVideoProgressEvent` provides comprehensive progress data:
+
+- **`progress`**: Progress value (0.0 to 1.0)
+- **`progressFormatted`**: Formatted percentage string (e.g., "75.5%")
+- **`videoPath`**: Path of the video being processed
+- **`isBatchOperation`**: Whether this is part of a batch operation
+- **`currentIndex`**: Current video index in batch operations
+- **`total`**: Total number of videos in batch operations
+- **`batchProgressDescription`**: Formatted batch progress string
+- **`compressionId`**: Optional ID for tracking specific operations
+
+#### **🔧 Technical Implementation**
+
+**Global Stream Manager:**
+
+- **`VVideoStreamManager`**: Singleton manager for global stream access
+- **Automatic Lifecycle**: Stream initialized on first access, cleaned up automatically
+- **Broadcast Stream**: Supports multiple concurrent listeners
+- **Error Handling**: Graceful error handling with fallback parsing
+
+**Typed Models:**
+
+- **`VVideoProgressEvent`**: Comprehensive typed progress event model
+- **Factory Methods**: Easy creation from native platform data
+- **Convenience Properties**: Formatted strings and batch operation detection
+
+**Platform Updates:**
+
+- **Android**: Simplified native code to send consistent data structure
+- **iOS**: Streamlined event emission with proper typing
+- **Method Channel**: Updated to use typed models instead of raw Maps
+
+#### **📊 Features Added**
+
+- **Global Stream Access**: `VVideoCompressor.progressStream` for universal access
+- **Convenience Methods**: `listenToProgress()`, `listenToBatchProgress()`, `listen()`
+- **Typed Progress Model**: `VVideoProgressEvent` with comprehensive information
+- **Automatic Management**: Stream lifecycle handled automatically
+- **Multiple Use Cases**: Support for widgets, services, controllers, and state management
+
+#### **🧪 Testing**
+
+- **✅ Backward Compatible**: All existing progress callbacks continue to work
+- **✅ Type Safety**: Full compile-time type checking for progress events
+- **✅ Stream Management**: Proper stream lifecycle and cleanup
+- **✅ Cross-Platform**: Both Android and iOS implementations updated
+
+#### **📋 Migration Guide**
+
+**No migration required** - existing progress callbacks continue to work.
+
+**To use the new global stream:**
+
+```dart
+// Replace individual progress callbacks
+VVideoCompressor.progressStream.listen((event) {
+  // Handle progress from anywhere in your app
+});
+
+// Use in services/controllers
+class VideoService {
+  static void startGlobalListener() {
+    VVideoCompressor.progressStream.listen((event) {
+      // Update state management, emit to other streams, etc.
+    });
+  }
+}
+
+// Use with state management
+class VideoNotifier extends ChangeNotifier {
+  void startListening() {
+    VVideoCompressor.progressStream.listen((event) {
+      // Update state and notify listeners
+      notifyListeners();
+    });
+  }
+}
+```
+
+#### **🎯 Benefits**
+
+- **🚀 Simplified Code**: No more Map type checking or manual casting
+- **🌐 Global Access**: Listen from anywhere without passing callbacks
+- **🔧 Better Architecture**: Cleaner separation of concerns
+- **📊 Rich Information**: Access to comprehensive progress data
+- **🎨 Multiple Patterns**: Support for different architectural patterns
+- **⚡ Performance**: Efficient broadcast stream with automatic management
+
+---
+
 ## [1.1.0] - 2024-12-21 🎥 **Vertical Video Orientation Fix**
 
 ### 🔄 **NEW: Automatic Orientation Correction**

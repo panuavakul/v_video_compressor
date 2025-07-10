@@ -11,15 +11,15 @@ import 'package:v_video_compressor_example/main.dart';
 void main() {
   testWidgets('Video Compressor App smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const VideoCompressorApp());
+    await tester.pumpWidget(const MyApp());
 
     // Verify that the app title is displayed
-    expect(find.text('Video Compressor'), findsOneWidget);
+    expect(find.text('V Video Compressor Example'), findsOneWidget);
 
-    // Verify that the video selector is displayed
-    expect(find.text('Select Video to Compress'), findsOneWidget);
+    // Verify that the video selection step is displayed
+    expect(find.text('Step 1: Select Video'), findsOneWidget);
 
-    // Verify that the choose video button is displayed
-    expect(find.text('Choose Video'), findsOneWidget);
+    // Verify that the select video button is displayed
+    expect(find.text('Select Video File'), findsOneWidget);
   });
 }

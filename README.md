@@ -10,6 +10,7 @@ A **professional Flutter plugin** for high-quality video compression with real-t
 
 - 🎬 **Professional Video Compression** - 5 quality levels with native platform APIs (Media3 for Android, AVFoundation for iOS)
 - 📊 **Real-Time Progress Tracking** - Smooth progress updates with hybrid estimation algorithm
+- 🌐 **Global Progress Stream** - NEW! Typed global stream accessible from anywhere in your app
 - 🔧 **Advanced Configuration** - 20+ compression parameters for professional control
 - 🖼️ **Thumbnail Generation** - Extract high-quality thumbnails at any timestamp
 - 📱 **Cross-Platform** - Full Android & iOS support with hardware acceleration
@@ -38,7 +39,7 @@ Add to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  v_video_compressor: ^1.0.3
+  v_video_compressor: ^1.2.0
   file_picker: ^8.0.0 # For video selection
   # OR
   image_picker: ^1.0.7 # Alternative for video selection
@@ -148,6 +149,156 @@ class _VideoCompressionExampleState extends State<VideoCompressionExample> {
 }
 ```
 
+## 🌐 **Global Progress Stream (NEW in v1.2.0)**
+
+Listen to compression progress from anywhere in your app with the new **typed global stream**:
+
+### Basic Global Stream Usage
+
+```dart
+import 'package:v_video_compressor/v_video_compressor.dart';
+
+class MyApp extends StatefulWidget {
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  StreamSubscription<VVideoProgressEvent>? _progressSubscription;
+  VVideoProgressEvent? _currentProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupGlobalProgressListener();
+  }
+
+  void _setupGlobalProgressListener() {
+    // Listen to global progress stream from anywhere
+    _progressSubscription = VVideoCompressor.progressStream.listen(
+      (event) {
+        setState(() {
+          _currentProgress = event;
+        });
+
+        print('Progress: ${event.progressFormatted}');
+        if (event.isBatchOperation) {
+          print('Batch: ${event.batchProgressDescription}');
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _progressSubscription?.cancel();
+    super.dispose();
+  }
+}
+```
+
+### Convenience Methods
+
+```dart
+// Method 1: Simple progress callback
+VVideoCompressor.listenToProgress((progress) {
+  print('Progress: ${(progress * 100).toInt()}%');
+});
+
+// Method 2: Batch progress callback
+VVideoCompressor.listenToBatchProgress((progress, currentIndex, total) {
+  print('Batch: Video ${currentIndex + 1}/$total - ${(progress * 100).toInt()}%');
+});
+
+// Method 3: Full event callback
+VVideoCompressor.listen((event) {
+  print('Progress: ${event.progressFormatted}');
+  print('Video: ${event.videoPath}');
+  if (event.isBatchOperation) {
+    print('Batch: ${event.batchProgressDescription}');
+  }
+});
+```
+
+### Global Stream Benefits
+
+- ✅ **Fully Typed**: No more `Map` checking - proper `VVideoProgressEvent` type
+- ✅ **Global Access**: Listen from anywhere in your app (widgets, services, controllers)
+- ✅ **Automatic Management**: Stream lifecycle handled automatically
+- ✅ **Multiple Listeners**: Broadcast stream supports multiple listeners
+- ✅ **Batch Support**: Built-in batch operation detection and progress
+- ✅ **Rich Information**: Access to video path, progress, batch info, and formatted strings
+
+### Use Cases
+
+**In Services/Controllers:**
+
+```dart
+class VideoCompressionService {
+  static StreamSubscription<VVideoProgressEvent>? _subscription;
+
+  static void startGlobalListener() {
+    _subscription = VVideoCompressor.progressStream.listen((event) {
+      // Update your state management, emit to other streams, etc.
+      print('Service: ${event.progressFormatted}');
+    });
+  }
+
+  static void stopGlobalListener() {
+    _subscription?.cancel();
+  }
+}
+```
+
+**With State Management:**
+
+```dart
+class VideoCompressionNotifier extends ChangeNotifier {
+  VVideoProgressEvent? _currentProgress;
+
+  VVideoProgressEvent? get currentProgress => _currentProgress;
+
+  void startListening() {
+    VVideoCompressor.progressStream.listen((event) {
+      _currentProgress = event;
+      notifyListeners(); // Notify UI to rebuild
+    });
+  }
+}
+```
+
+**Multiple Widgets:**
+
+```dart
+// Widget A
+class ProgressIndicator extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<VVideoProgressEvent>(
+      stream: VVideoCompressor.progressStream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return SizedBox();
+        return LinearProgressIndicator(value: snapshot.data!.progress);
+      },
+    );
+  }
+}
+
+// Widget B - completely separate
+class ProgressText extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<VVideoProgressEvent>(
+      stream: VVideoCompressor.progressStream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return Text('Ready');
+        return Text(snapshot.data!.progressFormatted);
+      },
+    );
+  }
+}
+```
+
 ## 🎯 **Quality Levels**
 
 Choose the right quality for your use case:
@@ -204,6 +355,39 @@ final result = await _compressor.compressVideo(
   ),
 );
 ```
+
+### ID-Based Compression Tracking
+
+Track compression operations with custom IDs for better monitoring:
+
+```dart
+// Compress with custom ID
+final result = await _compressor.compressVideo(
+  videoPath,
+  const VVideoCompressionConfig.medium(),
+  onProgress: (progress) {
+    print('Compression progress: ${(progress * 100).toInt()}%');
+  },
+  id: 'my-video-compression-${DateTime.now().millisecondsSinceEpoch}',
+);
+
+// Or let the plugin auto-generate an ID
+final result2 = await _compressor.compressVideo(
+  videoPath,
+  const VVideoCompressionConfig.medium(),
+  onProgress: (progress) {
+    print('Progress: ${(progress * 100).toInt()}%');
+  },
+  // No ID provided - will auto-generate one
+);
+```
+
+**Benefits of ID-based tracking:**
+
+- ✅ **Better Logging**: Each compression operation is logged with its unique ID
+- ✅ **Tracking**: Monitor specific compression operations in your app
+- ✅ **Debugging**: Easier to identify which compression operation failed
+- ✅ **Analytics**: Track compression performance and success rates
 
 ### Preset Configurations
 
@@ -427,7 +611,7 @@ Future<VVideoCompressionEstimate?> getCompressionEstimate(
 Future<VVideoCompressionResult?> compressVideo(
   String videoPath,
   VVideoCompressionConfig config,
-  {Function(double progress)? onProgress}
+  {Function(double progress)? onProgress, String? id}
 );
 
 // Batch compression

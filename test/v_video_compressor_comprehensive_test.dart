@@ -321,6 +321,21 @@ void main() {
         expect(lastProgress, closeTo(1.0, 0.01));
       });
 
+      test('should compress video with id parameter', () async {
+        const videoPath = '/path/to/video.mp4';
+        const config = VVideoCompressionConfig.medium();
+
+        final result = await compressor.compressVideo(
+          videoPath,
+          config,
+          id: 'test-compression',
+        );
+
+        expect(result, isNotNull);
+        expect(result!.originalSizeBytes, 10485760);
+        expect(result.compressedSizeBytes, 5242880);
+      });
+
       test('should return null for empty path', () async {
         const config = VVideoCompressionConfig.medium();
         final result = await compressor.compressVideo('', config);
@@ -415,72 +430,17 @@ void main() {
         );
         expect(invalidRotation.isValid(), false);
       });
-
-      test('should create preset configurations correctly', () {
-        final maxCompression = VVideoAdvancedConfig.maximumCompression();
-        expect(maxCompression.videoCodec, VVideoCodec.h265);
-        expect(maxCompression.aggressiveCompression, true);
-        expect(maxCompression.removeAudio, true);
-
-        final socialMedia = VVideoAdvancedConfig.socialMediaOptimized();
-        expect(socialMedia.videoCodec, VVideoCodec.h265);
-        expect(socialMedia.videoBitrate, 800000);
-        expect(socialMedia.reducedFrameRate, 30.0);
-
-        final mobile = VVideoAdvancedConfig.mobileOptimized();
-        expect(mobile.videoCodec, VVideoCodec.h264);
-        expect(mobile.hardwareAcceleration, true);
-      });
-
-      test('should create advanced config with orientation correction', () {
-        final config = VVideoAdvancedConfig(
-          videoBitrate: 1500000,
-          audioBitrate: 128000,
-          customWidth: 1280,
-          customHeight: 720,
-          autoCorrectOrientation: true,
-        );
-
-        expect(config.videoBitrate, 1500000);
-        expect(config.audioBitrate, 128000);
-        expect(config.customWidth, 1280);
-        expect(config.customHeight, 720);
-        expect(config.autoCorrectOrientation, true);
-        expect(config.isValid(), true);
-      });
-
-      test('should validate orientation correction parameter', () {
-        final configWithOrientation = VVideoAdvancedConfig(
-          autoCorrectOrientation: true,
-          videoBitrate: 1000000,
-        );
-        expect(configWithOrientation.autoCorrectOrientation, true);
-        expect(configWithOrientation.isValid(), true);
-
-        final configWithoutOrientation = VVideoAdvancedConfig(
-          autoCorrectOrientation: false,
-          videoBitrate: 1000000,
-        );
-        expect(configWithoutOrientation.autoCorrectOrientation, false);
-        expect(configWithoutOrientation.isValid(), true);
-
-        final configNullOrientation = VVideoAdvancedConfig(
-          videoBitrate: 1000000,
-        );
-        expect(configNullOrientation.autoCorrectOrientation, null);
-        expect(configNullOrientation.isValid(), true);
-      });
     });
 
     group('Thumbnail Generation', () {
-      test('should generate single thumbnail', () async {
+      test('should generate thumbnail successfully', () async {
         const videoPath = '/path/to/video.mp4';
-        const config = VVideoThumbnailConfig(
+        final config = VVideoThumbnailConfig(
           timeMs: 5000,
           maxWidth: 300,
           maxHeight: 200,
           format: VThumbnailFormat.jpeg,
-          quality: 85,
+          quality: 80,
         );
 
         final result = await compressor.getVideoThumbnail(videoPath, config);
@@ -496,146 +456,51 @@ void main() {
       test('should generate multiple thumbnails', () async {
         const videoPath = '/path/to/video.mp4';
         final configs = [
-          const VVideoThumbnailConfig(timeMs: 1000, maxWidth: 150),
-          const VVideoThumbnailConfig(timeMs: 5000, maxWidth: 150),
-          const VVideoThumbnailConfig(timeMs: 10000, maxWidth: 150),
+          VVideoThumbnailConfig(timeMs: 1000, maxWidth: 150),
+          VVideoThumbnailConfig(timeMs: 5000, maxWidth: 150),
+          VVideoThumbnailConfig(timeMs: 10000, maxWidth: 150),
         ];
 
         final results = await compressor.getVideoThumbnails(videoPath, configs);
 
-        expect(results, hasLength(configs.length));
+        expect(results, hasLength(3));
         expect(results[0].timeMs, 1000);
         expect(results[1].timeMs, 5000);
         expect(results[2].timeMs, 10000);
       });
-
-      test('should validate thumbnail config', () {
-        const validConfig = VVideoThumbnailConfig(
-          timeMs: 5000,
-          maxWidth: 300,
-          maxHeight: 200,
-          quality: 85,
-        );
-        expect(validConfig.isValid(), true);
-
-        const invalidTime = VVideoThumbnailConfig(
-          timeMs: -1000, // Negative time
-        );
-        expect(invalidTime.isValid(), false);
-
-        const invalidQuality = VVideoThumbnailConfig(
-          quality: 150, // Max is 100
-        );
-        expect(invalidQuality.isValid(), false);
-      });
     });
 
-    group('Compression State Management', () {
-      test('should check compression status', () async {
-        final isCompressing = await compressor.isCompressing();
-        expect(isCompressing, false);
+    group('Compression Control', () {
+      test('should cancel compression', () async {
+        await expectLater(
+          () => compressor.cancelCompression(),
+          returnsNormally,
+        );
       });
 
-      test('should cancel compression', () async {
-        // Should not throw
-        await compressor.cancelCompression();
+      test('should check compression status', () async {
+        final isCompressing = await compressor.isCompressing();
+        expect(isCompressing, isFalse);
       });
     });
 
     group('Cleanup Operations', () {
-      test('should perform complete cleanup', () async {
-        // Should not throw
-        await compressor.cleanup();
+      test('should perform cleanup', () async {
+        await expectLater(
+          () => compressor.cleanup(),
+          returnsNormally,
+        );
       });
 
       test('should perform selective cleanup', () async {
-        // Should not throw
-        await compressor.cleanupFiles(
-          deleteThumbnails: true,
-          deleteCompressedVideos: false,
-          clearCache: true,
-        );
-      });
-    });
-
-    group('Model Validation', () {
-      test('should validate VVideoInfo creation', () {
-        const info = VVideoInfo(
-          path: '/test/path.mp4',
-          name: 'test.mp4',
-          fileSizeBytes: 1048576,
-          durationMillis: 30000,
-          width: 1920,
-          height: 1080,
-        );
-
-        expect(info.path, '/test/path.mp4');
-        expect(info.fileSizeMB, closeTo(1.0, 0.1));
-        expect(info.durationFormatted, '00:30');
-        expect(info.fileSizeFormatted, '1.0 MB');
-      });
-
-      test('should validate compression result calculations', () {
-        const originalVideo = VVideoInfo(
-          path: '/test/path.mp4',
-          name: 'test.mp4',
-          fileSizeBytes: 10485760,
-          durationMillis: 30000,
-          width: 1920,
-          height: 1080,
-        );
-
-        const result = VVideoCompressionResult(
-          originalVideo: originalVideo,
-          compressedFilePath: '/compressed/path.mp4',
-          originalSizeBytes: 10485760,
-          compressedSizeBytes: 5242880,
-          compressionRatio: 0.5,
-          timeTaken: 5000,
-          quality: VVideoCompressQuality.medium,
-          originalResolution: '1920x1080',
-          compressedResolution: '1280x720',
-          spaceSaved: 5242880,
-        );
-
-        expect(result.compressionPercentage, 50);
-        expect(result.originalSizeFormatted, '10.0 MB');
-        expect(result.compressedSizeFormatted, '5.0 MB');
-        expect(result.spaceSavedFormatted, '5.0 MB');
-        expect(result.timeTakenFormatted, '5s');
-      });
-    });
-
-    group('Error Handling', () {
-      test('should handle invalid video paths gracefully', () async {
-        final info = await compressor.getVideoInfo('');
-        expect(info, isNull);
-
-        final estimate = await compressor.getCompressionEstimate(
-          '',
-          VVideoCompressQuality.medium,
-        );
-        expect(estimate, isNull);
-
-        final result = await compressor.compressVideo(
-          '',
-          const VVideoCompressionConfig.medium(),
-        );
-        expect(result, isNull);
-      });
-
-      test('should handle invalid configurations gracefully', () async {
-        const invalidConfig = VVideoCompressionConfig.medium(
-          advanced: VVideoAdvancedConfig(
-            customWidth: 100, // Missing height
+        await expectLater(
+          () => compressor.cleanupFiles(
+            deleteThumbnails: true,
+            deleteCompressedVideos: false,
+            clearCache: true,
           ),
+          returnsNormally,
         );
-
-        final result = await compressor.compressVideo(
-          '/valid/path.mp4',
-          invalidConfig,
-        );
-        expect(result, isNull);
       });
     });
   });

@@ -209,7 +209,6 @@ class VVideoCompressorPlugin: FlutterPlugin, MethodCallHandler, EventChannel.Str
                         override fun onProgress(progress: Float) {
                             mainHandler.post {
                                 eventSink?.success(mapOf(
-                                    "type" to "progress",
                                     "progress" to progress,
                                     "videoPath" to videoPath
                                 ))
@@ -286,11 +285,10 @@ class VVideoCompressorPlugin: FlutterPlugin, MethodCallHandler, EventChannel.Str
                                 override fun onProgress(progress: Float) {
                                     mainHandler.post {
                                         eventSink?.success(mapOf(
-                                            "type" to "batchProgress",
                                             "progress" to progress,
                                             "videoPath" to videoPath,
                                             "currentIndex" to index,
-                                            "totalCount" to videoPaths.size
+                                            "total" to videoPaths.size
                                         ))
                                     }
                                 }

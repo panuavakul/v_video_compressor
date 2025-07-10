@@ -1,568 +1,248 @@
 import 'package:flutter/material.dart';
 import 'package:v_video_compressor/v_video_compressor.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:gal/gal.dart';
-import 'dart:io';
-import 'advanced_compression_page.dart';
 
 void main() {
-  runApp(const VideoCompressorApp());
+  // Configure logging for development
+  VVideoCompressor.configureLogging(VVideoLogConfig.development());
+
+  runApp(const MyApp());
 }
 
-class VideoCompressorApp extends StatelessWidget {
-  const VideoCompressorApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Video Compressor',
+      title: 'V Video Compressor Example',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const VideoCompressorPage(),
+      home: const MyHomePage(title: 'V Video Compressor Example'),
     );
   }
 }
 
-class VideoCompressorPage extends StatefulWidget {
-  const VideoCompressorPage({super.key});
+class MyHomePage extends StatefulWidget {
+  const MyHomePage({super.key, required this.title});
+
+  final String title;
 
   @override
-  State<VideoCompressorPage> createState() => _VideoCompressorPageState();
+  State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _VideoCompressorPageState extends State<VideoCompressorPage> {
+class _MyHomePageState extends State<MyHomePage> {
   final VVideoCompressor _compressor = VVideoCompressor();
 
-  // Video state
-  String? _videoPath;
-  VVideoInfo? _videoInfo;
-
-  // Thumbnail state
-  VVideoThumbnailResult? _thumbnailResult;
-  bool _isGeneratingThumbnail = false;
-
-  // Compression state
-  bool _isCompressing = false;
+  String? _selectedVideoPath;
   double _compressionProgress = 0.0;
+  bool _isCompressing = false;
+  VVideoInfo? _videoInfo;
+  VVideoCompressionEstimate? _estimate;
   VVideoCompressionResult? _result;
-
-  // Gallery saving state
-  bool _isSavingToGallery = false;
-  bool _savedToGallery = false;
-
-  // Error handling
-  String? _errorMessage;
+  bool _saveToGallery = false;
+  String? _thumbnailPath;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Video Compressor'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text(widget.title),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildVideoSelector(),
-            if (_videoInfo != null) ...[
-              const SizedBox(height: 20),
-              _buildVideoInfo(),
-            ],
-            if (_videoPath != null && !_isCompressing) ...[
-              const SizedBox(height: 20),
-              _buildCompressionControls(),
-            ],
-            if (_isCompressing) ...[
-              const SizedBox(height: 20),
-              _buildCompressionProgress(),
-            ],
-            if (_result != null) ...[
-              const SizedBox(height: 20),
-              _buildCompressionResult(),
-            ],
-            if (_errorMessage != null) ...[
-              const SizedBox(height: 20),
-              _buildErrorMessage(),
-            ],
-            ElevatedButton(
-              onPressed: _isCompressing ? null : _pickVideo,
-              child: Text('Pick Video'),
-            ),
-            SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _showOrientationFixDemo,
-              icon: Icon(Icons.screen_rotation),
-              label: Text('Orientation Fix Demo'),
-            ),
-            SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVideoSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Icon(Icons.video_library, size: 48, color: Colors.blue),
-            const SizedBox(height: 16),
             const Text(
-              'Select Video to Compress',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              'V Video Compressor Example',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
+
+            // Video Selection
             ElevatedButton.icon(
               onPressed: _pickVideo,
-              icon: const Icon(Icons.file_upload),
-              label: Text(_videoPath == null ? 'Choose Video' : 'Change Video'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-              ),
-            ),
-            if (_videoPath != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Selected: ${_getFileName(_videoPath!)}',
-                style: const TextStyle(color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVideoInfo() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Video Information & Thumbnail',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              icon: const Icon(Icons.video_library),
+              label: const Text('Pick Video from Gallery'),
             ),
             const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Thumbnail Section
-                Expanded(flex: 1, child: _buildThumbnailSection()),
-                const SizedBox(width: 20),
-                // Video Info Section
-                Expanded(
-                  flex: 1,
+
+            if (_videoInfo != null) ...[
+              // Video Info Card
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildInfoRow('Duration', _videoInfo!.durationFormatted),
-                      _buildInfoRow(
-                        'Resolution',
-                        '${_videoInfo!.width} × ${_videoInfo!.height}',
+                      const Text(
+                        'Video Information',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      _buildInfoRow('File Size', _videoInfo!.fileSizeFormatted),
-                      _buildInfoRow(
-                        'Format',
-                        _videoInfo!.name.split('.').last.toUpperCase(),
+                      Text('Path: $_selectedVideoPath'),
+                      Text('Duration: ${_videoInfo!.durationFormatted}'),
+                      Text('Size: ${_videoInfo!.fileSizeFormatted}'),
+                      Text(
+                        'Resolution: ${_videoInfo!.width}x${_videoInfo!.height}',
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+              ),
+              const SizedBox(height: 16),
+            ],
 
-  Widget _buildThumbnailSection() {
-    return Column(
-      children: [
-        Container(
-          height: 150,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: _isGeneratingThumbnail
-                ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 8),
-                        Text('Generating thumbnail...'),
-                      ],
-                    ),
-                  )
-                : _thumbnailResult != null &&
-                      File(_thumbnailResult!.thumbnailPath).existsSync()
-                ? Image.file(
-                    File(_thumbnailResult!.thumbnailPath),
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                  )
-                : const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.image, size: 48, color: Colors.grey),
-                        SizedBox(height: 8),
-                        Text(
-                          'No thumbnail',
-                          style: TextStyle(color: Colors.grey),
+            if (_selectedVideoPath != null) ...[
+              // Compression Options
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Compress Video',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: VVideoCompressQuality.values.map((quality) {
+                          return ElevatedButton(
+                            onPressed: () => _compressVideo(quality),
+                            child: Text(quality.name.toUpperCase()),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 8),
+                      SwitchListTile(
+                        title: const Text('Save to Gallery after Compression'),
+                        value: _saveToGallery,
+                        onChanged: (value) =>
+                            setState(() => _saveToGallery = value),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Thumbnail Generation
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Generate Thumbnail',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: _generateThumbnail,
+                        child: const Text('Generate Thumbnail at 5s'),
+                      ),
+                      if (_thumbnailPath != null) ...[
+                        const SizedBox(height: 8),
+                        Text('Thumbnail saved at: $_thumbnailPath'),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: _saveThumbnailToGallery,
+                          child: const Text('Save Thumbnail to Gallery'),
                         ),
                       ],
-                    ),
+                    ],
                   ),
-          ),
-        ),
-        if (_thumbnailResult != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            '${_thumbnailResult!.width} × ${_thumbnailResult!.height}',
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-          Text(
-            _thumbnailResult!.fileSizeFormatted,
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          Text(value, style: const TextStyle(color: Colors.grey)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompressionControls() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Compression Quality',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            _buildQualityButton(
-              'High Quality (1080p)',
-              'Best quality, larger file size',
-              VVideoCompressQuality.high,
-              Colors.green,
-            ),
-            const SizedBox(height: 12),
-            _buildQualityButton(
-              'Medium Quality (720p)',
-              'Good balance of quality and size',
-              VVideoCompressQuality.medium,
-              Colors.blue,
-            ),
-            const SizedBox(height: 12),
-            _buildQualityButton(
-              'Low Quality (480p)',
-              'Smaller file size, lower quality',
-              VVideoCompressQuality.low,
-              Colors.orange,
-            ),
-            const SizedBox(height: 12),
-            _buildQualityButton(
-              'Very Low Quality (360p)',
-              'Smallest file size, lowest quality',
-              VVideoCompressQuality.veryLow,
-              Colors.red,
-            ),
-            const SizedBox(height: 20),
-            const Divider(),
-            const SizedBox(height: 20),
-            _buildAdvancedSettingsButton(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQualityButton(
-    String title,
-    String description,
-    VVideoCompressQuality quality,
-    Color color,
-  ) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: InkWell(
-        onTap: () => _compressVideo(quality),
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    Text(
-                      description,
-                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                  ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 16),
+              const SizedBox(height: 16),
             ],
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildAdvancedSettingsButton() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.purple.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(8),
-        gradient: LinearGradient(
-          colors: [
-            Colors.purple.withValues(alpha: 0.1),
-            Colors.purple.withValues(alpha: 0.05),
-          ],
-        ),
-      ),
-      child: InkWell(
-        onTap: _openAdvancedSettings,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.purple,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.settings,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Advanced Custom Settings',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+            if (_isCompressing) ...[
+              // Progress
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Compressing...',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Full control over all compression parameters',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      '• Custom bitrates, codecs, and resolution\n'
-                      '• Advanced video/audio settings\n'
-                      '• Trim, rotate, and color adjustments\n'
-                      '• Presets for maximum compression',
-                      style: TextStyle(color: Colors.grey, fontSize: 10),
-                    ),
-                  ],
+                      LinearProgressIndicator(value: _compressionProgress),
+                      Text('${(_compressionProgress * 100).toInt()}%'),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: _cancelCompression,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 16),
+              const SizedBox(height: 16),
             ],
-          ),
-        ),
-      ),
-    );
-  }
 
-  Widget _buildCompressionProgress() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Text(
-              'Compressing Video...',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            LinearProgressIndicator(value: _compressionProgress),
-            const SizedBox(height: 8),
-            Text(
-              '${(_compressionProgress * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _cancelCompression,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+            if (_result != null) ...[
+              // Result
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Compression Result',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text('Original Size: ${_result!.originalSizeFormatted}'),
+                      Text(
+                        'Compressed Size: ${_result!.compressedSizeFormatted}',
+                      ),
+                      Text(
+                        'Saved: ${_result!.spaceSavedFormatted} (${_result!.compressionPercentage}%)',
+                      ),
+                      Text('Time: ${_result!.timeTakenFormatted}'),
+                      Text('Path: ${_result!.compressedFilePath}'),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: () => _saveCompressedToGallery(
+                          _result!.compressedFilePath!,
+                        ),
+                        child: const Text('Save Compressed Video to Gallery'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCompressionResult() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Icon(Icons.check_circle, size: 48, color: Colors.green),
-            const SizedBox(height: 16),
-            const Text(
-              'Compression Complete!',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            _buildResultRow('Original Size', _result!.originalSizeFormatted),
-            _buildResultRow(
-              'Compressed Size',
-              _result!.compressedSizeFormatted,
-            ),
-            _buildResultRow('Space Saved', _result!.spaceSavedFormatted),
-            _buildResultRow(
-              'Compression Ratio',
-              '${_result!.compressionRatio.toStringAsFixed(1)}%',
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isSavingToGallery ? null : _saveToGallery,
-                    icon: _isSavingToGallery
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(_savedToGallery ? Icons.check : Icons.save),
-                    label: Text(
-                      _isSavingToGallery
-                          ? 'Saving...'
-                          : _savedToGallery
-                          ? 'Saved to Gallery'
-                          : 'Save to Gallery',
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _savedToGallery ? Colors.green : null,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _reset,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Compress Another'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildResultRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          Text(value, style: const TextStyle(color: Colors.grey)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildErrorMessage() {
-    return Card(
-      color: Colors.red.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Icon(Icons.error, size: 48, color: Colors.red),
-            const SizedBox(height: 16),
-            const Text(
-              'Error',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => setState(() => _errorMessage = null),
-              child: const Text('Dismiss'),
-            ),
+            ],
           ],
         ),
       ),
@@ -571,97 +251,50 @@ class _VideoCompressorPageState extends State<VideoCompressorPage> {
 
   Future<void> _pickVideo() async {
     try {
-      setState(() => _errorMessage = null);
-
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.video,
-        allowMultiple: false,
+      final pickedVideo = await ImagePicker().pickVideo(
+        source: ImageSource.gallery,
       );
+      if (pickedVideo == null) return;
 
-      if (result != null && result.files.single.path != null) {
-        final videoPath = result.files.single.path!;
-        setState(() {
-          _videoPath = videoPath;
-          _videoInfo = null;
-          _thumbnailResult = null;
-          _isGeneratingThumbnail = false;
-          _result = null;
-        });
+      final path = pickedVideo.path;
+      final info = await _compressor.getVideoInfo(path);
 
-        await _loadVideoInfo(videoPath);
+      if (info == null) throw Exception('Invalid video');
+
+      setState(() {
+        _selectedVideoPath = path;
+        _videoInfo = info;
+        _result = null;
+        _thumbnailPath = null;
+        _compressionProgress = 0.0;
+        _isCompressing = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error picking video: $e')));
       }
-    } catch (e) {
-      setState(() => _errorMessage = 'Error selecting video: $e');
-    }
-  }
-
-  Future<void> _loadVideoInfo(String videoPath) async {
-    try {
-      final videoInfo = await _compressor.getVideoInfo(videoPath);
-      setState(() => _videoInfo = videoInfo);
-
-      // Generate thumbnail automatically after video info is loaded
-      await _generateThumbnail(videoPath);
-    } catch (e) {
-      setState(() => _errorMessage = 'Error loading video info: $e');
-    }
-  }
-
-  Future<void> _generateThumbnail(String videoPath) async {
-    setState(() {
-      _isGeneratingThumbnail = true;
-      _thumbnailResult = null;
-    });
-
-    try {
-      final config = const VVideoThumbnailConfig.defaults(
-        timeMs: 1000, // Extract thumbnail at 2 seconds
-        maxWidth: 300,
-        maxHeight: 300,
-        format: VThumbnailFormat.jpeg,
-        quality: 85,
-      );
-
-      final thumbnail = await _compressor.getVideoThumbnail(videoPath, config);
-
-      setState(() {
-        _thumbnailResult = thumbnail;
-        _isGeneratingThumbnail = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isGeneratingThumbnail = false;
-        _errorMessage = 'Error generating thumbnail: $e';
-      });
     }
   }
 
   Future<void> _compressVideo(VVideoCompressQuality quality) async {
-    if (_videoPath == null) return;
+    if (_selectedVideoPath == null) return;
 
     setState(() {
       _isCompressing = true;
       _compressionProgress = 0.0;
       _result = null;
-      _errorMessage = null;
     });
 
     try {
-      final config = VVideoCompressionConfig(
-        quality: quality,
-        advanced: VVideoAdvancedConfig(
-          autoCorrectOrientation: true,
-          videoBitrate: 1500000,
-          audioBitrate: 128000,
-        ),
-      );
+      final config = VVideoCompressionConfig(quality: quality);
 
       final result = await _compressor.compressVideo(
-        _videoPath!,
+        _selectedVideoPath!,
         config,
-        onProgress: (progress) {
-          setState(() => _compressionProgress = progress);
-        },
+        onProgress: (progress) =>
+            setState(() => _compressionProgress = progress),
       );
 
       setState(() {
@@ -670,167 +303,110 @@ class _VideoCompressorPageState extends State<VideoCompressorPage> {
       });
 
       if (result != null) {
-        debugPrint('✅ Vertical video compressed successfully!');
-        debugPrint('Original: ${result.originalResolution}');
-        debugPrint('Compressed: ${result.compressedResolution}');
-        debugPrint(
-          'Orientation preserved: ${result.originalResolution.contains('x')}',
-        );
+        if (_saveToGallery) {
+          await _saveCompressedToGallery(result.compressedFilePath!);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Compression successful!')),
+          );
+        }
       }
     } catch (e) {
-      setState(() {
-        _isCompressing = false;
-        _errorMessage = 'Compression failed: $e';
-      });
+      setState(() => _isCompressing = false);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Compression failed: $e')));
+      }
     }
   }
 
-  Future<void> _compressVideoWithConfig(VVideoCompressionConfig config) async {
-    if (_videoPath == null) return;
-
-    setState(() {
-      _isCompressing = true;
-      _compressionProgress = 0.0;
-      _result = null;
-      _errorMessage = null;
-    });
+  Future<void> _generateThumbnail() async {
+    if (_selectedVideoPath == null) return;
 
     try {
-      final result = await _compressor.compressVideo(
-        _videoPath!,
+      final config = VVideoThumbnailConfig(
+        timeMs: 5000,
+        maxWidth: 300,
+        maxHeight: 200,
+        format: VThumbnailFormat.jpeg,
+        quality: 85,
+      );
+
+      final thumbnail = await _compressor.getVideoThumbnail(
+        _selectedVideoPath!,
         config,
-        onProgress: (progress) {
-          setState(() => _compressionProgress = progress);
-        },
       );
 
       setState(() {
-        _isCompressing = false;
-        _result = result;
+        _thumbnailPath = thumbnail?.thumbnailPath;
       });
+
+      if (thumbnail != null && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Thumbnail generated!')));
+      }
     } catch (e) {
-      setState(() {
-        _isCompressing = false;
-        _errorMessage = 'Compression failed: $e';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Thumbnail failed: $e')));
+      }
     }
   }
 
-  void _openAdvancedSettings() {
-    if (_videoPath == null || _videoInfo == null) return;
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => AdvancedCompressionPage(
-          videoPath: _videoPath!,
-          videoInfo: _videoInfo!,
-          onCompress: _compressVideoWithConfig,
-        ),
-      ),
-    );
-  }
-
-  Future<void> _cancelCompression() async {
-    try {
-      await _compressor.cancelCompression();
-      setState(() => _isCompressing = false);
-    } catch (e) {
-      setState(() => _errorMessage = 'Error canceling compression: $e');
-    }
-  }
-
-  void _reset() {
-    setState(() {
-      _videoPath = null;
-      _videoInfo = null;
-      _thumbnailResult = null;
-      _isGeneratingThumbnail = false;
-      _result = null;
-      _errorMessage = null;
-      _isCompressing = false;
-      _compressionProgress = 0.0;
-      _isSavingToGallery = false;
-      _savedToGallery = false;
-    });
-  }
-
-  Future<void> _saveToGallery() async {
-    if (_result == null) return;
-
-    setState(() {
-      _isSavingToGallery = true;
-      _errorMessage = null;
-    });
+  Future<void> _saveThumbnailToGallery() async {
+    if (_thumbnailPath == null) return;
 
     try {
-      await Gal.putVideo(_result!.compressedFilePath);
-
-      setState(() {
-        _isSavingToGallery = false;
-        _savedToGallery = true;
-      });
-
+      await Gal.putImage(_thumbnailPath!);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Video saved to gallery successfully!'),
-            backgroundColor: Colors.green,
-          ),
+          const SnackBar(content: Text('Thumbnail saved to gallery!')),
         );
       }
     } catch (e) {
-      setState(() {
-        _isSavingToGallery = false;
-        _errorMessage = 'Error saving to gallery: $e';
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save thumbnail: $e')));
+      }
     }
   }
 
-  String _getFileName(String path) {
-    return path.split('/').last;
+  Future<void> _saveCompressedToGallery(String path) async {
+    try {
+      await Gal.putVideo(path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Compressed video saved to gallery!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save video: $e')));
+      }
+    }
   }
 
-  void _showOrientationFixDemo() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('🎥 Orientation Fix Demo'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('📱 The new autoCorrectOrientation feature ensures:'),
-            SizedBox(height: 8),
-            Text('• Vertical videos stay vertical after compression'),
-            Text('• Portrait videos maintain their 9:16 aspect ratio'),
-            Text('• No more horizontal display of vertical content'),
-            Text('• Automatic detection of original video orientation'),
-            SizedBox(height: 12),
-            Text('💡 Usage:', style: TextStyle(fontWeight: FontWeight.bold)),
-            SizedBox(height: 4),
-            Container(
-              padding: EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                'VVideoAdvancedConfig(\n'
-                '  autoCorrectOrientation: true,\n'
-                '  // other settings...\n'
-                ')',
-                style: TextStyle(fontFamily: 'monospace'),
-              ),
-            ),
-          ],
+  Future<void> _cancelCompression() async {
+    await _compressor.cancelCompression();
+    setState(() {
+      _isCompressing = false;
+      _compressionProgress = 0.0;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Compression cancelled'),
+          backgroundColor: Colors.orange,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Got it!'),
-          ),
-        ],
-      ),
-    );
+      );
+    }
   }
 }
