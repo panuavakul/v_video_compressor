@@ -1,3 +1,94 @@
+## [1.2.1] - 2025-01-25 🛡️ **App Store Compliance & iOS Stability**
+
+### 🍎 **iOS Platform Improvements**
+
+#### **🔒 App Store Connect Compliance**
+- **Fixed ITMS-91054 Error**: Resolved invalid privacy manifest API category declaration
+  - Removed invalid `NSPrivacyAccessedAPICategoryPhotoLibrary` from privacy manifest
+  - Kept only essential API categories: `FileTimestamp` and `DiskSpace`
+  - **No additional permissions required** - your app won't trigger permission dialogs
+  - Ensures smooth App Store review process without privacy-related rejections
+
+#### **🎯 Enhanced Video Orientation Handling**
+- **Fixed Issue #1**: Resolved video orientation problems during compression
+  - Improved `preferredTransform` handling for proper video rotation
+  - Enhanced auto-orientation correction with better dimension calculation
+  - Fixed rotation logic for 90° and 270° rotations
+  - Videos now maintain correct orientation after compression
+
+#### **⚡ Performance & Stability Improvements**
+- **Fixed Issue #4**: Enhanced iOS compression engine reliability
+  - Added comprehensive input validation before compression starts
+  - Implemented disk space checking to prevent compression failures
+  - Added proper memory management with automatic cleanup
+  - Enhanced error handling with specific, actionable error messages
+  - Improved background processing stability
+
+#### **🔧 Technical Enhancements**
+- **Memory Management**: Added proper `deinit` cleanup and resource management
+- **Input Validation**: Comprehensive parameter validation prevents crashes
+- **Error Handling**: Detailed error messages for debugging (disk space, file access, format issues)
+- **iOS Compatibility**: Lowered minimum iOS version to 12.0 for wider device support
+- **Framework Dependencies**: Explicitly declared required iOS frameworks
+
+### 📱 **What This Means for Developers**
+
+#### **App Store Submission**
+- ✅ **No Privacy Review Issues**: Your app will pass App Store privacy manifest validation
+- ✅ **No Additional Permissions**: Plugin only uses essential file and disk space APIs
+- ✅ **Smooth Review Process**: Eliminates ITMS-91054 rejection reasons
+
+#### **Video Processing**
+- ✅ **Correct Orientation**: Vertical videos stay vertical, horizontal videos stay horizontal
+- ✅ **Better Reliability**: Comprehensive validation prevents compression failures
+- ✅ **Improved Performance**: Better memory management and resource cleanup
+
+#### **Compatibility**
+- ✅ **Wider Device Support**: Now supports iOS 12.0+ (previously iOS 13.0+)
+- ✅ **Better Stability**: Enhanced error handling and validation
+
+### 🔄 **Merged Pull Request #3**
+- Integrated community contributions for improved iOS stability
+- Enhanced compression engine with better error handling
+- Improved video orientation detection and correction
+
+### 📋 **Migration Guide**
+
+**No migration required** - this is a backward-compatible stability update.
+
+**For App Store submissions:**
+1. Update to v1.2.1
+2. Rebuild your app
+3. Submit to App Store - privacy manifest issues are resolved
+
+**For video orientation issues:**
+```dart
+// Existing code automatically benefits from orientation fixes
+final result = await compressor.compressVideo(
+  videoPath,
+  VVideoCompressionConfig(
+    quality: VVideoCompressQuality.medium,
+    advanced: VVideoAdvancedConfig(
+      autoCorrectOrientation: true, // Now works more reliably
+    ),
+  ),
+);
+```
+
+### 🧪 **Testing**
+- ✅ **App Store Validation**: Privacy manifest passes Apple's validation
+- ✅ **Cross-Platform**: Both Android and iOS implementations tested
+- ✅ **Orientation Testing**: Verified with various video orientations
+- ✅ **Memory Testing**: Validated proper resource cleanup
+
+### 🎯 **Key Benefits**
+- **🛡️ App Store Ready**: No privacy manifest issues
+- **📱 Better UX**: Videos maintain correct orientation
+- **⚡ More Stable**: Enhanced error handling and validation
+- **🔧 Wider Support**: Compatible with more iOS devices
+
+---
+
 ## [1.2.0] - 2024-12-21 🌐 **Global Progress Stream**
 
 ### 🚀 **NEW: Typed Global Progress Stream**

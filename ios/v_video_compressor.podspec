@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'v_video_compressor'
-  s.version          = '1.0.0'
+  s.version          = '1.2.1'
   s.summary          = 'Efficient video compression plugin for Flutter'
   s.description      = <<-DESC
 A focused Flutter plugin for efficient video compression with real-time progress tracking,
@@ -20,16 +20,20 @@ advanced configuration options, and high-quality output.
   s.dependency 'Flutter'
   
   # Platform requirements
-  s.platform = :ios, '13.0'
-  s.ios.deployment_target = '13.0'
+  s.platform = :ios, '12.0'
+  s.ios.deployment_target = '12.0'
 
   # Compiler settings
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'SWIFT_VERSION' => '5.0'
+    'SWIFT_VERSION' => '5.0',
+    'OTHER_SWIFT_FLAGS' => '-Xfrontend -warn-long-function-bodies=100 -Xfrontend -warn-long-expression-type-checking=100'
   }
   s.swift_version = '5.0'
+  
+  # Framework dependencies
+  s.frameworks = 'AVFoundation', 'UIKit', 'Foundation'
 
   # Privacy manifest for App Store compliance
   s.resource_bundles = {'v_video_compressor_privacy' => ['Resources/PrivacyInfo.xcprivacy']}

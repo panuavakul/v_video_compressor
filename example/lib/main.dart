@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:v_video_compressor/v_video_compressor.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:gal/gal.dart';
+import '4k_test_page.dart';
 
 void main() {
   // Configure logging for development
@@ -53,6 +54,18 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const FourKTestPage()),
+              );
+            },
+            icon: const Icon(Icons.science),
+            tooltip: '4K Compression Test',
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -63,6 +76,34 @@ class _MyHomePageState extends State<MyHomePage> {
               'V Video Compressor Example',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Card(
+              color: Colors.blue.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info, color: Colors.blue),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'For 4K video compression testing, tap the test tube icon above.',
+                        style: TextStyle(color: Colors.blue),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const FourKTestPage()),
+                        );
+                      },
+                      child: const Text('4K Test'),
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 16),
 

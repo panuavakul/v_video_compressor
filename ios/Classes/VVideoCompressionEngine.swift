@@ -14,6 +14,11 @@ class VVideoCompressionEngine {
     private var progressTimer: Timer?
     private var isCompressionActive = false
     private var isCancelled = false
+    // Removed background task - keeping it simple for now
+    
+    deinit {
+        cleanup()
+    }
     
     protocol CompressionCallback: AnyObject {
         func onProgress(_ progress: Float)
@@ -120,6 +125,12 @@ class VVideoCompressionEngine {
     }
     
     func compressVideo(_ videoInfo: VVideoInfo, config: VVideoCompressionConfig, callback: CompressionCallback) {
+        // Validate inputs
+        guard validateCompressionInputs(videoInfo: videoInfo, config: config) else {
+            callback.onError("Invalid compression parameters")
+            return
+        }
+        
         let startTime = Date().timeIntervalSince1970 * 1000
         
         isCancelled = false
@@ -130,10 +141,22 @@ class VVideoCompressionEngine {
             return
         }
         
+        // Check if file exists and is readable
+        guard FileManager.default.fileExists(atPath: inputURL.path) else {
+            callback.onError("Video file not found")
+            return
+        }
+        
         // iOS Quick Fix: Optimize asset loading
         let options = [AVURLAssetPreferPreciseDurationAndTimingKey: false]
         let asset = AVURLAsset(url: inputURL, options: options)
         let outputURL = createOutputFile(config.outputPath, videoInfo: videoInfo, quality: config.quality)
+        
+        // Check available disk space
+        guard hasEnoughDiskSpace(for: videoInfo, outputURL: outputURL) else {
+            callback.onError("Insufficient storage space")
+            return
+        }
         
         print("VVideoCompressionEngine: FIXED ROTATION - Starting compression")
         
@@ -536,6 +559,42 @@ class VVideoCompressionEngine {
         }
     }
 
+    // MARK: - Input Validation
+    
+    private func validateCompressionInputs(videoInfo: VVideoInfo, config: VVideoCompressionConfig) -> Bool {
+        // Check video info
+        guard !videoInfo.path.isEmpty,
+              videoInfo.width > 0,
+              videoInfo.height > 0,
+              videoInfo.durationMillis > 0 else {
+            return false
+        }
+        
+        // Check advanced config if present
+        if let advanced = config.advanced {
+            if let width = advanced.customWidth, width <= 0 { return false }
+            if let height = advanced.customHeight, height <= 0 { return false }
+            if let bitrate = advanced.videoBitrate, bitrate <= 0 { return false }
+            if let frameRate = advanced.frameRate, frameRate <= 0 { return false }
+        }
+        
+        return true
+    }
+    
+    private func hasEnoughDiskSpace(for videoInfo: VVideoInfo, outputURL: URL) -> Bool {
+        do {
+            let resourceValues = try outputURL.resourceValues(forKeys: [.volumeAvailableCapacityKey])
+            if let availableCapacity = resourceValues.volumeAvailableCapacity {
+                // Require at least 2x the original file size as safety margin
+                let requiredSpace = videoInfo.fileSizeBytes * 2
+                return Int64(availableCapacity) > requiredSpace
+            }
+        } catch {
+            print("VVideoCompressionEngine: Could not check disk space: \(error)")
+        }
+        return true // Default to allowing compression if we can't check
+    }
+    
     private func createURL(from path: String) -> URL? {
         if path.hasPrefix("file://") {
             return URL(string: path)

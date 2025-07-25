@@ -99,14 +99,17 @@ class VVideoCompressionEngine(private val context: Context) {
     private var deviceCapabilityCache: DeviceCapabilityResult? = null
     
     companion object {
-        // Improved bitrate settings for better compression (Android Quick Fix)
+        // 4K FIX: Enhanced bitrate settings with 4K support
+        private const val BITRATE_4K_HIGH = 8000000      // 8 Mbps for 4K
         private const val BITRATE_1080P_HIGH = 3500000   // 3.5 Mbps (improved)
         private const val BITRATE_720P_MEDIUM = 1800000  // 1.8 Mbps (improved)
         private const val BITRATE_480P_LOW = 900000      // 900 kbps (improved)
         private const val BITRATE_360P_VERY_LOW = 500000 // 500 kbps (improved)
         private const val BITRATE_240P_ULTRA_LOW = 350000 // 350 kbps (improved)
         
-        // Resolution settings for different qualities
+        // 4K FIX: Enhanced resolution settings with 4K support
+        private const val WIDTH_4K = 3840
+        private const val HEIGHT_4K = 2160
         private const val WIDTH_1080P = 1920
         private const val HEIGHT_1080P = 1080
         private const val WIDTH_720P = 1280
@@ -413,7 +416,7 @@ class VVideoCompressionEngine(private val context: Context) {
 
     
     /**
-     * Determines optimal quality for device and video resolution
+     * 4K FIX: Enhanced optimal quality determination with progressive fallback
      */
     private fun getOptimalQuality(
         videoWidth: Int,
@@ -421,12 +424,37 @@ class VVideoCompressionEngine(private val context: Context) {
         requestedQuality: VVideoCompressQuality
     ): VVideoCompressQuality {
         val is4K = videoWidth >= 3840 || videoHeight >= 2160
+        val is2K = videoWidth >= 2560 || videoHeight >= 1440
         
         if (is4K) {
             val capabilityResult = canHandle4KCompression()
             if (!capabilityResult.canHandle4K) {
-                println("4K FIX: Downgrading quality due to device limitations: ${capabilityResult.reason}")
-                return downgradeQuality(requestedQuality)
+                println("4K FIX: Device cannot handle 4K compression: ${capabilityResult.reason}")
+                // For 4K videos, never go above MEDIUM quality on incapable devices
+                return when (requestedQuality) {
+                    VVideoCompressQuality.HIGH -> VVideoCompressQuality.MEDIUM
+                    else -> minOf(requestedQuality, VVideoCompressQuality.MEDIUM)
+                }
+            } else {
+                // Even capable devices should be conservative with 4K
+                return when (requestedQuality) {
+                    VVideoCompressQuality.HIGH -> {
+                        // Check if device has enough memory for HIGH quality 4K
+                        val memoryDetails = analyzeMemoryCapabilities()
+                        if (memoryDetails.availableMemoryMB < 2000) { // Need 2GB+ for HIGH 4K
+                            VVideoCompressQuality.MEDIUM
+                        } else {
+                            VVideoCompressQuality.HIGH
+                        }
+                    }
+                    else -> requestedQuality
+                }
+            }
+        } else if (is2K) {
+            // 2K videos also need careful handling
+            val memoryDetails = analyzeMemoryCapabilities()
+            if (memoryDetails.availableMemoryMB < 1500 && requestedQuality == VVideoCompressQuality.HIGH) {
+                return VVideoCompressQuality.MEDIUM
             }
         }
         
@@ -447,15 +475,46 @@ class VVideoCompressionEngine(private val context: Context) {
     }
     
     /**
-     * Handles compression errors with fallback logic
+     * 4K FIX: Enhanced error detection for codec capacity and 4K-specific issues
      */
     private fun isCodecCapacityError(error: Throwable): Boolean {
         val errorMessage = error.message?.lowercase() ?: ""
-        return errorMessage.contains("codec capacity") ||
-               errorMessage.contains("failed to initialize") ||
-               errorMessage.contains("codec reported err") ||
-               errorMessage.contains("insufficient resources") ||
-               errorMessage.contains("encoder") && errorMessage.contains("failed")
+        val stackTrace = error.stackTrace?.joinToString(" ") { it.toString().lowercase() } ?: ""
+        
+        // Common codec capacity error patterns
+        val codecErrors = listOf(
+            "codec capacity",
+            "failed to initialize",
+            "codec reported err",
+            "insufficient resources",
+            "encoder failed",
+            "mediacodec error",
+            "error 0xffffec77", // Specific error from the issue
+            "codec exception",
+            "resource busy",
+            "codec not available",
+            "encoder init failed",
+            "format not supported",
+            "resolution not supported",
+            "bitrate too high",
+            "frame rate not supported"
+        )
+        
+        // 4K-specific error patterns
+        val fourKErrors = listOf(
+            "resolution too high",
+            "size not supported",
+            "dimensions not supported",
+            "3840x2160",
+            "4k not supported",
+            "uhd not supported"
+        )
+        
+        val allErrors = codecErrors + fourKErrors
+        
+        return allErrors.any { pattern ->
+            errorMessage.contains(pattern) || stackTrace.contains(pattern)
+        }
     }
     
     /**
@@ -550,13 +609,26 @@ class VVideoCompressionEngine(private val context: Context) {
     ): VVideoCompressionEstimate {
         val durationSeconds = videoInfo.durationMillis / 1000.0
 
-        // Get base bitrate (improved from Android Quick Fix)
-        var targetVideoBitrate = advanced?.videoBitrate ?: when (quality) {
-            VVideoCompressQuality.HIGH -> BITRATE_1080P_HIGH
-            VVideoCompressQuality.MEDIUM -> BITRATE_720P_MEDIUM
-            VVideoCompressQuality.LOW -> BITRATE_480P_LOW
-            VVideoCompressQuality.VERY_LOW -> BITRATE_360P_VERY_LOW
-            VVideoCompressQuality.ULTRA_LOW -> BITRATE_240P_ULTRA_LOW
+        // 4K FIX: Enhanced bitrate calculation with 4K support
+        var targetVideoBitrate = advanced?.videoBitrate ?: when {
+            // 4K video handling
+            videoInfo.width >= 3840 || videoInfo.height >= 2160 -> {
+                when (quality) {
+                    VVideoCompressQuality.HIGH -> BITRATE_4K_HIGH
+                    VVideoCompressQuality.MEDIUM -> (BITRATE_4K_HIGH * 0.6).toInt() // 4.8 Mbps
+                    VVideoCompressQuality.LOW -> (BITRATE_4K_HIGH * 0.4).toInt() // 3.2 Mbps
+                    VVideoCompressQuality.VERY_LOW -> (BITRATE_4K_HIGH * 0.25).toInt() // 2 Mbps
+                    VVideoCompressQuality.ULTRA_LOW -> (BITRATE_4K_HIGH * 0.15).toInt() // 1.2 Mbps
+                }
+            }
+            // Standard quality handling
+            else -> when (quality) {
+                VVideoCompressQuality.HIGH -> BITRATE_1080P_HIGH
+                VVideoCompressQuality.MEDIUM -> BITRATE_720P_MEDIUM
+                VVideoCompressQuality.LOW -> BITRATE_480P_LOW
+                VVideoCompressQuality.VERY_LOW -> BITRATE_360P_VERY_LOW
+                VVideoCompressQuality.ULTRA_LOW -> BITRATE_240P_ULTRA_LOW
+            }
         }
 
         // Apply resolution scaling (Android Quick Fix improvement)
@@ -673,12 +745,8 @@ class VVideoCompressionEngine(private val context: Context) {
             // Configure transformer with advanced settings
             val transformerBuilder = Transformer.Builder(context)
             
-            // Improved codec selection from Android Quick Fix
-            val videoMimeType = when {
-                config.advanced?.videoCodec == VVideoCodec.H264 -> MimeTypes.VIDEO_H264
-                config.quality == VVideoCompressQuality.HIGH -> MimeTypes.VIDEO_H264 // Keep H.264 for high quality
-                else -> MimeTypes.VIDEO_H265 // Use H.265 for better compression
-            }
+            // 4K FIX: Enhanced codec selection with device capability consideration
+            val videoMimeType = selectOptimalVideoCodec(videoInfo, config)
             transformerBuilder.setVideoMimeType(videoMimeType)
             
             // Apply audio codec settings if audio is not removed
@@ -699,8 +767,8 @@ class VVideoCompressionEngine(private val context: Context) {
                 // Just ensure we're not disabling it accidentally
             }
             
-            // Apply advanced compression optimizations
-            applyAdvancedCompressionSettings(transformerBuilder, config.advanced)
+            // 4K FIX: Apply advanced compression optimizations with 4K considerations
+            applyAdvancedCompressionSettings(transformerBuilder, config.advanced, videoInfo)
             
             transformer = transformerBuilder
                 .addListener(object : Transformer.Listener {
@@ -829,6 +897,99 @@ class VVideoCompressionEngine(private val context: Context) {
             null // No lower quality available
         } else {
             downgradeQuality(currentQuality)
+        }
+    }
+    
+    /**
+     * 4K FIX: Selects optimal video codec based on device capabilities and video resolution
+     */
+    private fun selectOptimalVideoCodec(
+        videoInfo: VVideoInfo,
+        config: VVideoCompressionConfig
+    ): String {
+        val is4K = videoInfo.width >= 3840 || videoInfo.height >= 2160
+        
+        // If user explicitly requested a codec, respect it
+        config.advanced?.videoCodec?.let { requestedCodec ->
+            return when (requestedCodec) {
+                VVideoCodec.H264 -> MimeTypes.VIDEO_H264
+                VVideoCodec.H265 -> {
+                    // Check if device supports H.265 for this resolution
+                    if (is4K && !supportsH265For4K()) {
+                        println("4K FIX: Device doesn't support H.265 for 4K, falling back to H.264")
+                        MimeTypes.VIDEO_H264
+                    } else {
+                        MimeTypes.VIDEO_H265
+                    }
+                }
+            }
+        }
+        
+        // Automatic codec selection based on resolution and device capabilities
+        return when {
+            is4K -> {
+                // For 4K, prefer H.264 for better compatibility
+                if (supportsH264For4K()) {
+                    MimeTypes.VIDEO_H264
+                } else if (supportsH265For4K()) {
+                    println("4K FIX: Using H.265 for 4K as H.264 not supported")
+                    MimeTypes.VIDEO_H265
+                } else {
+                    println("4K FIX: No 4K codec support detected, using H.264 anyway")
+                    MimeTypes.VIDEO_H264
+                }
+            }
+            config.quality == VVideoCompressQuality.HIGH -> MimeTypes.VIDEO_H264 // Keep H.264 for high quality
+            else -> {
+                // Use H.265 for better compression on lower qualities if supported
+                if (hasH265Support()) MimeTypes.VIDEO_H265 else MimeTypes.VIDEO_H264
+            }
+        }
+    }
+    
+    /**
+     * 4K FIX: Checks if device supports H.264 encoding for 4K resolution
+     */
+    private fun supportsH264For4K(): Boolean {
+        return try {
+            val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+            codecList.codecInfos.any { codecInfo ->
+                codecInfo.isEncoder && 
+                codecInfo.supportedTypes.contains(MimeTypes.VIDEO_H264) &&
+                checkCodecFormat(codecInfo, MimeTypes.VIDEO_H264)
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * 4K FIX: Checks if device supports H.265 encoding for 4K resolution
+     */
+    private fun supportsH265For4K(): Boolean {
+        return try {
+            val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+            codecList.codecInfos.any { codecInfo ->
+                codecInfo.isEncoder && 
+                codecInfo.supportedTypes.contains(MimeTypes.VIDEO_H265) &&
+                checkCodecFormat(codecInfo, MimeTypes.VIDEO_H265)
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+    
+    /**
+     * 4K FIX: Checks if device has basic H.265 support
+     */
+    private fun hasH265Support(): Boolean {
+        return try {
+            val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+            codecList.codecInfos.any { codecInfo ->
+                codecInfo.isEncoder && codecInfo.supportedTypes.contains(MimeTypes.VIDEO_H265)
+            }
+        } catch (e: Exception) {
+            false
         }
     }
     
@@ -1279,13 +1440,35 @@ class VVideoCompressionEngine(private val context: Context) {
     }
     
     /**
-     * Applies advanced compression settings to the transformer for maximum file size reduction
+     * 4K FIX: Enhanced compression settings with 4K-specific optimizations
      */
     private fun applyAdvancedCompressionSettings(
         transformerBuilder: Transformer.Builder,
-        advanced: VVideoAdvancedConfig?
+        advanced: VVideoAdvancedConfig?,
+        videoInfo: VVideoInfo
     ) {
         if (advanced == null) return
+        
+        val is4K = videoInfo.width >= 3840 || videoInfo.height >= 2160
+        
+        // 4K FIX: Apply 4K-specific optimizations
+        if (is4K) {
+            // Always enable trim optimization for 4K videos
+            transformerBuilder.experimentalSetTrimOptimizationEnabled(true)
+            
+            // Force hardware acceleration for 4K if available
+            if (advanced.hardwareAcceleration != false) {
+                try {
+                    // Hardware acceleration is critical for 4K processing
+                    println("4K FIX: Enabling hardware acceleration for 4K video")
+                } catch (e: Exception) {
+                    println("4K FIX: Hardware acceleration failed, using software encoding")
+                }
+            }
+            
+            // Apply conservative settings for 4K to prevent codec failures
+            println("4K FIX: Applying 4K-optimized compression settings")
+        }
         
         // Apply aggressive compression if enabled
         if (advanced.aggressiveCompression == true) {

@@ -37,6 +37,8 @@ PODS:
   - gal (1.0.0):
     - Flutter
     - FlutterMacOS
+  - image_picker_ios (0.0.1):
+    - Flutter
   - integration_test (0.0.1):
     - Flutter
   - SDWebImage (5.21.1):
@@ -50,6 +52,7 @@ DEPENDENCIES:
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - Flutter (from `Flutter`)
   - gal (from `.symlinks/plugins/gal/darwin`)
+  - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
   - integration_test (from `.symlinks/plugins/integration_test/ios`)
   - v_video_compressor (from `.symlinks/plugins/v_video_compressor/ios`)
 
@@ -67,6 +70,8 @@ EXTERNAL SOURCES:
     :path: Flutter
   gal:
     :path: ".symlinks/plugins/gal/darwin"
+  image_picker_ios:
+    :path: ".symlinks/plugins/image_picker_ios/ios"
   integration_test:
     :path: ".symlinks/plugins/integration_test/ios"
   v_video_compressor:
@@ -78,10 +83,11 @@ SPEC CHECKSUMS:
   file_picker: b159e0c068aef54932bb15dc9fd1571818edaf49
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
   gal: 6a522c75909f1244732d4596d11d6a2f86ff37a5
+  image_picker_ios: c560581cceedb403a6ff17f2f816d7fea1421fc1
   integration_test: 252f60fa39af5e17c3aa9899d35d908a0721b573
   SDWebImage: f29024626962457f3470184232766516dee8dfea
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
-  v_video_compressor: 30a4e38023f00fa84cf0def536191122ac0f1407
+  v_video_compressor: 02afff7241aab5ed5a679155d478e592d5dfb772
 
 PODFILE CHECKSUM: 251cb053df7158f337c0712f2ab29f4e0fa474ce
 
