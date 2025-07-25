@@ -427,11 +427,11 @@ class VVideoCompressionEngine {
         }
         
         switch quality {
-        case .high: return AVAssetExportPresetHighestQuality
-        case .medium: return AVAssetExportPreset1920x1080
-        case .low: return AVAssetExportPreset1280x720
-        case .veryLow: return AVAssetExportPreset960x540
-        case .ultraLow: return AVAssetExportPreset640x480
+        case .high: return AVAssetExportPreset1920x1080
+        case .medium: return  AVAssetExportPreset1280x720
+        case .low: return  AVAssetExportPreset960x540
+        case .veryLow: return  AVAssetExportPreset640x480
+        case .ultraLow: return AVAssetExportPresetLowQuality
         }
     }
     
