@@ -223,8 +223,14 @@ class VVideoCompressionEngine {
         
         // ORIENTATION FIX: Get original orientation and determine if auto-correction is needed
         let naturalSize = videoTrack.naturalSize
+        let actualSize = videoTrack.size
+        let orientation = videoTrack.getOrientation();
+        
+        let effectiveSize = orientation.isPortrait ? actualSize : naturalSize
+        
         let preferredTransform = videoTrack.preferredTransform
-        let shouldAutoCorrect = config.advanced?.autoCorrectOrientation == true
+       let shouldAutoCorrect = config.advanced?.autoCorrectOrientation == true
+        
         
         // Calculate rotation - either from config or auto-detected
         var rotation = config.advanced?.rotation ?? 0
@@ -257,6 +263,13 @@ class VVideoCompressionEngine {
         // ORIENTATION FIX: Use preferred transform as base and apply additional rotation if needed
         var transform = shouldAutoCorrect ? preferredTransform : CGAffineTransform.identity
         
+        // 縦長の場合は正しい位置に回転
+        if(orientation.isPortrait){
+            let angle = CGFloat(90) * .pi / 180.0
+            let rotationTransform = CGAffineTransformRotate(CGAffineTransform(translationX: CGFloat(effectiveSize.width), y: CGFloat(0)), angle)
+            transform = transform.concatenating(rotationTransform)
+        }
+        
         if rotation != 0 {
             let angle = CGFloat(rotation) * .pi / 180.0
             let rotationTransform = CGAffineTransform(rotationAngle: angle)
@@ -265,8 +278,8 @@ class VVideoCompressionEngine {
         }
         
         // Apply scaling if needed
-        let scaleX = CGFloat(renderWidth) / naturalSize.width
-        let scaleY = CGFloat(renderHeight) / naturalSize.height
+        let scaleX = CGFloat(renderWidth) / effectiveSize.width
+        let scaleY = CGFloat(renderHeight) / effectiveSize.height
         let scale = min(scaleX, scaleY)
         
         if scale != 1.0 {
@@ -602,6 +615,33 @@ class VVideoCompressionEngine {
             return URL(fileURLWithPath: path)
         } else {
             return URL(fileURLWithPath: path)
+        }
+    }
+}
+
+
+extension AVAssetTrack {
+    var size: CGSize {
+        let orientation = getOrientation()
+        switch orientation {
+        case .portrait, .portraitUpsideDown:
+            return CGSize(width: naturalSize.height, height: naturalSize.width)
+        default:
+            return naturalSize
+        }
+    }
+    
+    func getOrientation() -> UIInterfaceOrientation {
+        let transform = preferredTransform
+        switch (transform.tx, transform.ty) {
+        case (0, 0):
+            return .landscapeRight
+        case (naturalSize.width, naturalSize.height):
+            return .landscapeLeft
+        case (0, naturalSize.width):
+            return .portraitUpsideDown
+        default:
+            return .portrait
         }
     }
 }
