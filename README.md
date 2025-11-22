@@ -435,6 +435,49 @@ VVideoAdvancedConfig(
 - ✅ **Cross-Platform**: Works on both Android and iOS
 - ✅ **No Quality Loss**: Maintains video quality while preserving orientation
 
+#### 🎯 **NEW: Automatic Dimension Alignment (Issue #9 Fix)**
+
+**Problem**: Compressed videos show colored/black smears along edges when input dimensions aren't divisible by 16 (encoder padding artifacts).
+
+**Solution**: Automatic 16-pixel boundary alignment prevents encoder padding:
+
+```dart
+// These dimensions will automatically align to 16-pixel boundaries
+VVideoAdvancedConfig(
+  customWidth: 1082,   // Will align to 1072 (1072 % 16 == 0)
+  customHeight: 1278,  // Will align to 1264 (1264 % 16 == 0)
+  dimensionHandling: VDimensionHandling.autoAlign,  // Default: smart auto-detection
+)
+```
+
+**Dimension Handling Options**:
+
+```dart
+enum VDimensionHandling {
+  autoAlign,   // ✅ Default: Smart alignment, only aligns when needed
+  letterbox,   // Adds black bars to maintain aspect ratio during alignment
+  exact,       // Keep exact dimensions (may cause artifacts with odd dimensions)
+}
+```
+
+**How It Works**:
+
+| Input | Aligned | Notes |
+|-------|---------|-------|
+| 1920  | 1920    | Already 16-aligned, no change |
+| 1080  | 1072    | Rounds down to prevent padding |
+| 1082  | 1072    | Removes edge artifacts |
+| 1278  | 1264    | Fixes chroma padding issues |
+| 720   | 720     | Standard width, already aligned |
+
+**Key Benefits**:
+
+- ✅ **Fixes Edge Artifacts**: Eliminates colored/black smears on video edges
+- ✅ **Transparent**: Auto-detects and applies only when needed
+- ✅ **Cross-Platform**: Works on both Android and iOS
+- ✅ **Smart Alignment**: Only adjusts dimensions not divisible by 16
+- ✅ **Logging**: Logs dimension adjustments for debugging
+
 #### Other Advanced Options
 
 ```dart
@@ -448,7 +491,8 @@ VVideoAdvancedConfig(
   removeAudio: false,           // Remove audio track
   brightness: 0.1,              // Brightness adjustment (-1.0 to 1.0)
   contrast: 0.1,                // Contrast adjustment (-1.0 to 1.0)
-  autoCorrectOrientation: true, // NEW: Auto-correct orientation
+  autoCorrectOrientation: true, // Auto-correct video orientation
+  dimensionHandling: VDimensionHandling.autoAlign, // NEW: Auto-align dimensions to 16-pixel boundaries
   // ... other options
 )
 ```

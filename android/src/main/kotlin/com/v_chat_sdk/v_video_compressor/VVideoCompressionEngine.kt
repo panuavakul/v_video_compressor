@@ -8,6 +8,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
@@ -18,6 +19,7 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.Effects
 import androidx.media3.effect.Presentation
+import androidx.media3.effect.ScaleAndRotateTransformation
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
@@ -103,9 +105,9 @@ class VVideoCompressionEngine(private val context: Context) {
         private const val BITRATE_4K_HIGH = 8000000      // 8 Mbps for 4K
         private const val BITRATE_1080P_HIGH = 3500000   // 3.5 Mbps (improved)
         private const val BITRATE_720P_MEDIUM = 1800000  // 1.8 Mbps (improved)
-        private const val BITRATE_480P_LOW = 900000      // 900 kbps (improved)
-        private const val BITRATE_360P_VERY_LOW = 500000 // 500 kbps (improved)
-        private const val BITRATE_240P_ULTRA_LOW = 350000 // 350 kbps (improved)
+        private const val BITRATE_480P_LOW = 500000      // 500 kbps (Issue #7 fix)
+        private const val BITRATE_360P_VERY_LOW = 300000 // 300 kbps (Issue #7 fix)
+        private const val BITRATE_240P_ULTRA_LOW = 200000 // 200 kbps (Issue #7 fix)
         
         // 4K FIX: Enhanced resolution settings with 4K support
         private const val WIDTH_4K = 3840
@@ -121,9 +123,11 @@ class VVideoCompressionEngine(private val context: Context) {
         private const val WIDTH_240P = 426
         private const val HEIGHT_240P = 240
         
-        // Improved audio bitrate settings
-        private const val AUDIO_BITRATE = 128000 // 128 kbps (improved)
-        private const val AUDIO_BITRATE_LOW = 64000 // 64 kbps for low quality
+        // Improved audio bitrate settings (Issue #7 fix)
+        private const val AUDIO_BITRATE = 128000 // 128 kbps for HIGH/MEDIUM quality
+        private const val AUDIO_BITRATE_LOW = 64000 // 64 kbps for LOW quality
+        private const val AUDIO_BITRATE_VERY_LOW = 48000 // 48 kbps for VERY_LOW quality
+        private const val AUDIO_BITRATE_ULTRA_LOW = 32000 // 32 kbps for ULTRA_LOW quality
         
         // Default frame rate for better compression
         private const val DEFAULT_FRAME_RATE = 30.0 // 30 FPS
@@ -373,6 +377,156 @@ class VVideoCompressionEngine(private val context: Context) {
         } catch (e: Exception) {
             false
         }
+    }
+
+    /**
+     * 4K FIX: Validates complete codec configuration including bitrate and framerate
+     * Returns true if codec can handle the specific resolution/bitrate/framerate combination
+     */
+    private fun validateCompleteCodecConfiguration(
+        width: Int,
+        height: Int,
+        bitrate: Int,
+        frameRate: Double = DEFAULT_FRAME_RATE,
+        mimeType: String = MimeTypes.VIDEO_H264
+    ): Boolean {
+        return try {
+            val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+            val codecInfo = codecList.codecInfos.firstOrNull { codecInfo ->
+                codecInfo.isEncoder &&
+                codecInfo.supportedTypes.contains(mimeType)
+            } ?: return false
+
+            val capabilities = codecInfo.getCapabilitiesForType(mimeType)
+            val videoCapabilities = capabilities.videoCapabilities ?: return false
+
+            // Check 1: Resolution support
+            if (!videoCapabilities.isSizeSupported(width, height)) {
+                return false
+            }
+
+            // Check 2: Bitrate range support (CRITICAL FIX)
+            val bitrateRange = videoCapabilities.bitrateRange
+            if (!bitrateRange.contains(bitrate)) {
+                println("4K FIX: Bitrate $bitrate not supported (range: ${bitrateRange.lower}-${bitrateRange.upper})")
+                return false
+            }
+
+            // Check 3: Framerate support for this resolution (CRITICAL FIX)
+            try {
+                if (!videoCapabilities.areSizeAndRateSupported(width, height, frameRate)) {
+                    println("4K FIX: Framerate $frameRate not supported at ${width}x$height")
+                    return false
+                }
+            } catch (e: Exception) {
+                // areSizeAndRateSupported may throw on some devices, fall back to size check
+                println("4K FIX: Framerate check failed (${e.message}), assuming supported")
+            }
+
+            true
+        } catch (e: Exception) {
+            println("4K FIX: Configuration validation error: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * 4K FIX: Gets the maximum supported bitrate for a given codec and resolution
+     */
+    private fun getMaxSupportedBitrate(
+        width: Int,
+        height: Int,
+        mimeType: String = MimeTypes.VIDEO_H264
+    ): Int {
+        return try {
+            val codecList = MediaCodecList(MediaCodecList.REGULAR_CODECS)
+            val codecInfo = codecList.codecInfos.firstOrNull { codecInfo ->
+                codecInfo.isEncoder &&
+                codecInfo.supportedTypes.contains(mimeType)
+            } ?: return BITRATE_1080P_HIGH // Fallback default
+
+            val capabilities = codecInfo.getCapabilitiesForType(mimeType)
+            val videoCapabilities = capabilities.videoCapabilities ?: return BITRATE_1080P_HIGH
+
+            // Check if codec supports this resolution
+            if (!videoCapabilities.isSizeSupported(width, height)) {
+                return BITRATE_1080P_HIGH // Can't handle this resolution
+            }
+
+            // Return the maximum supported bitrate for this codec
+            val maxBitrate = videoCapabilities.bitrateRange.upper
+            println("4K FIX: Max bitrate for ${width}x$height on ${mimeType}: $maxBitrate")
+            maxBitrate
+        } catch (e: Exception) {
+            println("4K FIX: Could not determine max bitrate: ${e.message}")
+            BITRATE_1080P_HIGH // Safe fallback
+        }
+    }
+
+    /**
+     * 4K FIX: Validates and adjusts compression configuration before encoding
+     * Returns adjusted config with safe bitrate if needed
+     */
+    private fun validateAndAdjustConfiguration(
+        videoInfo: VVideoInfo,
+        config: VVideoCompressionConfig,
+        videoMimeType: String
+    ): VVideoCompressionConfig {
+        // Calculate actual target dimensions and bitrate that will be used
+        val (targetWidth, targetHeight) = calculateAspectRatioPreservingDimensions(
+            videoInfo.width, videoInfo.height, config.quality,
+            config.advanced?.customWidth, config.advanced?.customHeight
+        )
+
+        // Determine bitrate from quality and advanced config
+        var targetBitrate = when {
+            config.advanced?.videoBitrate != null -> config.advanced.videoBitrate
+            targetWidth >= 3840 || targetHeight >= 2160 -> {
+                when (config.quality) {
+                    VVideoCompressQuality.HIGH -> BITRATE_4K_HIGH
+                    VVideoCompressQuality.MEDIUM -> (BITRATE_4K_HIGH * 0.6).toInt()
+                    VVideoCompressQuality.LOW -> (BITRATE_4K_HIGH * 0.4).toInt()
+                    VVideoCompressQuality.VERY_LOW -> (BITRATE_4K_HIGH * 0.25).toInt()
+                    VVideoCompressQuality.ULTRA_LOW -> (BITRATE_4K_HIGH * 0.15).toInt()
+                }
+            }
+            else -> when (config.quality) {
+                VVideoCompressQuality.HIGH -> BITRATE_1080P_HIGH
+                VVideoCompressQuality.MEDIUM -> BITRATE_720P_MEDIUM
+                VVideoCompressQuality.LOW -> BITRATE_480P_LOW
+                VVideoCompressQuality.VERY_LOW -> BITRATE_360P_VERY_LOW
+                VVideoCompressQuality.ULTRA_LOW -> BITRATE_240P_ULTRA_LOW
+            }
+        }
+
+        val frameRate = config.advanced?.frameRate ?: DEFAULT_FRAME_RATE
+
+        println("4K FIX: Pre-compression validation - ${targetWidth}x${targetHeight} @ ${targetBitrate / 1_000_000}Mbps @ ${frameRate}fps")
+
+        // Validate if this configuration is supported
+        if (validateCompleteCodecConfiguration(targetWidth, targetHeight, targetBitrate, frameRate, videoMimeType)) {
+            println("4K FIX: Configuration is valid, proceeding with compression")
+            return config
+        }
+
+        println("4K FIX: Configuration validation failed, attempting to adjust bitrate...")
+
+        // If validation failed, get the maximum supported bitrate and adjust
+        val maxSupportedBitrate = getMaxSupportedBitrate(targetWidth, targetHeight, videoMimeType)
+
+        if (maxSupportedBitrate < targetBitrate) {
+            println("4K FIX: Adjusting bitrate from $targetBitrate to $maxSupportedBitrate")
+
+            // Create adjusted advanced config with new bitrate
+            val adjustedAdvanced = (config.advanced ?: VVideoAdvancedConfig()).copy(
+                videoBitrate = maxSupportedBitrate
+            )
+
+            // Return config with adjusted bitrate
+            return config.copy(advanced = adjustedAdvanced)
+        }
+
+        return config
     }
     
     /**
@@ -640,14 +794,16 @@ class VVideoCompressionEngine(private val context: Context) {
         val targetPixels = targetWidth * targetHeight
         if (targetPixels < originalPixels) {
             val pixelRatio = targetPixels.toFloat() / originalPixels
-            targetVideoBitrate = (targetVideoBitrate * pixelRatio * 1.2f).toInt()
+            targetVideoBitrate = (targetVideoBitrate * pixelRatio * 0.9f).toInt()  // Issue #7 fix: reduce not increase
         }
 
-        // Audio bitrate (improved from Android Quick Fix)
+        // Audio bitrate (Issue #7 fix: scale by quality)
         val targetAudioBitrate = when {
             advanced?.removeAudio == true -> 0
             advanced?.audioBitrate != null -> advanced.audioBitrate
-            quality == VVideoCompressQuality.ULTRA_LOW -> AUDIO_BITRATE_LOW
+            quality == VVideoCompressQuality.LOW -> AUDIO_BITRATE_LOW
+            quality == VVideoCompressQuality.VERY_LOW -> AUDIO_BITRATE_VERY_LOW
+            quality == VVideoCompressQuality.ULTRA_LOW -> AUDIO_BITRATE_ULTRA_LOW
             else -> AUDIO_BITRATE
         }
 
@@ -748,27 +904,30 @@ class VVideoCompressionEngine(private val context: Context) {
             // 4K FIX: Enhanced codec selection with device capability consideration
             val videoMimeType = selectOptimalVideoCodec(videoInfo, config)
             transformerBuilder.setVideoMimeType(videoMimeType)
-            
+
+            // 4K FIX: Validate and adjust configuration before building transformer
+            val validatedConfig = validateAndAdjustConfiguration(videoInfo, config, videoMimeType)
+
             // Apply audio codec settings if audio is not removed
-            if (config.advanced?.removeAudio != true) {
-                val audioMimeType = when (config.advanced?.audioCodec) {
+            if (validatedConfig.advanced?.removeAudio != true) {
+                val audioMimeType = when (validatedConfig.advanced?.audioCodec) {
                     VAudioCodec.MP3 -> MimeTypes.AUDIO_MPEG
                     else -> MimeTypes.AUDIO_AAC // Default to AAC
                 }
                 transformerBuilder.setAudioMimeType(audioMimeType)
             }
-            
+
             // Apply more aggressive encoding settings for smaller files
             transformerBuilder.experimentalSetTrimOptimizationEnabled(true)
-            
+
             // Optimization from Android Quick Fix
-            if (config.advanced?.hardwareAcceleration != false) {
+            if (validatedConfig.advanced?.hardwareAcceleration != false) {
                 // Hardware acceleration is enabled by default in Media3
                 // Just ensure we're not disabling it accidentally
             }
-            
+
             // 4K FIX: Apply advanced compression optimizations with 4K considerations
-            applyAdvancedCompressionSettings(transformerBuilder, config.advanced, videoInfo)
+            applyAdvancedCompressionSettings(transformerBuilder, validatedConfig.advanced, videoInfo)
             
             transformer = transformerBuilder
                 .addListener(object : Transformer.Listener {
@@ -776,42 +935,60 @@ class VVideoCompressionEngine(private val context: Context) {
 
                     override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                         stopProgressTracking()
-                        
+
                         if (isCancelled.get()) {
                             // Clean up output file if cancelled
                             try {
                                 outputFile.delete()
-                            } catch (e: Exception) { 
+                            } catch (e: Exception) {
                                 // Ignore cleanup errors
                             }
                             callback.onError("Compression was cancelled")
                             return
                         }
-                        
+
                         val endTime = System.currentTimeMillis()
                         val timeTaken = endTime - startTime
-                        
+
                         // Send final progress update
                         mainHandler.post {
                             callback.onProgress(1.0f)
                         }
-                        
+
+                        // Issue #7 fix: Check if compressed file is larger than original
+                        val compressedSizeBytes = outputFile.length()
+                        val originalSizeBytes = videoInfo.fileSizeBytes
+                        val compressionRatio = compressedSizeBytes.toFloat() / originalSizeBytes
+
+                        // If compression didn't save space (>= 95% of original), use original instead
+                        val finalFile = if (compressionRatio >= 0.95f) {
+                            println("Issue #7: Compressed file (${compressedSizeBytes}B) is too close to original (${originalSizeBytes}B). Using original.")
+                            try {
+                                outputFile.delete()
+                            } catch (e: Exception) {
+                                // Ignore cleanup errors
+                            }
+                            File(videoInfo.path)
+                        } else {
+                            outputFile
+                        }
+
                         val result = createCompressionResult(
                             originalVideo = videoInfo,
-                            compressedFile = outputFile,
+                            compressedFile = finalFile,
                             quality = config.quality,
                             timeTaken = timeTaken
                         )
-                        
+
                         // Handle post-compression tasks
-                        if (config.deleteOriginal) {
+                        if (config.deleteOriginal && finalFile != File(videoInfo.path)) {
                             try {
                                 File(videoInfo.path).delete()
                             } catch (e: Exception) {
                                 // Log error but don't fail the compression
                             }
                         }
-                        
+
                         callback.onComplete(result)
                     }
                     
@@ -847,17 +1024,27 @@ class VVideoCompressionEngine(private val context: Context) {
                             }
                         }
                         
-                        // Improved error handling from Android Quick Fix
+                        // Improved error handling with device capability details
                         val detailedError = when (exportException.errorCode) {
                             ExportException.ERROR_CODE_FAILED_RUNTIME_CHECK ->
                                 "Video format not supported"
                             ExportException.ERROR_CODE_IO_FILE_NOT_FOUND ->
                                 "Video file not found"
-                            ExportException.ERROR_CODE_ENCODER_INIT_FAILED ->
-                                "Failed to initialize video encoder. Device may not support this resolution/quality. Try using lower quality settings."
-                            else -> exportException.message ?: "Unknown compression error"
+                            ExportException.ERROR_CODE_ENCODER_INIT_FAILED -> {
+                                val deviceReport = buildDeviceCapabilityReport()
+                                "Failed to initialize video encoder.\n\n$deviceReport"
+                            }
+                            else -> {
+                                // For codec capacity errors, include device info
+                                if (isCodecCapacityError(exportException)) {
+                                    val deviceReport = buildDeviceCapabilityReport()
+                                    "Video compression failed - codec capacity exceeded.\n\n$deviceReport"
+                                } else {
+                                    exportException.message ?: "Unknown compression error"
+                                }
+                            }
                         }
-                        
+
                         callback.onError(detailedError)
                     }
                 })
@@ -871,21 +1058,29 @@ class VVideoCompressionEngine(private val context: Context) {
             
         } catch (e: Exception) {
             stopProgressTracking()
-            
+
             // 4K FIX: Check if this is a codec capacity error and retry if possible
             if (retryCount < MAX_COMPRESSION_RETRIES && isCodecCapacityError(e)) {
                 val nextQuality = getNextLowerQuality(config.quality)
                 if (nextQuality != null) {
                     val retryMessage = "Codec initialization failed. Retrying with lower quality (${nextQuality.displayName})"
                     println("4K FIX: $retryMessage")
-                    
+
                     val retryConfig = config.copy(quality = nextQuality)
                     compressVideoWithRetry(videoInfo, retryConfig, callback, retryCount + 1)
                     return
                 }
             }
-            
-            callback.onError(e.message ?: "Failed to start compression")
+
+            // Enhanced error message with device capabilities
+            val errorMessage = if (isCodecCapacityError(e)) {
+                val deviceReport = buildDeviceCapabilityReport()
+                "Compression failed - ${e.message ?: "codec error"}.\n\n$deviceReport"
+            } else {
+                e.message ?: "Failed to start compression"
+            }
+
+            callback.onError(errorMessage)
         }
     }
     
@@ -902,47 +1097,82 @@ class VVideoCompressionEngine(private val context: Context) {
     
     /**
      * 4K FIX: Selects optimal video codec based on device capabilities and video resolution
+     * Enhanced to validate against actual configuration and provide fallback
      */
     private fun selectOptimalVideoCodec(
         videoInfo: VVideoInfo,
         config: VVideoCompressionConfig
     ): String {
         val is4K = videoInfo.width >= 3840 || videoInfo.height >= 2160
-        
-        // If user explicitly requested a codec, respect it
+
+        // Calculate target dimensions and bitrate for validation
+        val (targetWidth, targetHeight) = calculateAspectRatioPreservingDimensions(
+            videoInfo.width, videoInfo.height, config.quality,
+            config.advanced?.customWidth, config.advanced?.customHeight
+        )
+
+        val targetBitrate = when {
+            config.advanced?.videoBitrate != null -> config.advanced.videoBitrate
+            targetWidth >= 3840 || targetHeight >= 2160 -> {
+                when (config.quality) {
+                    VVideoCompressQuality.HIGH -> BITRATE_4K_HIGH
+                    VVideoCompressQuality.MEDIUM -> (BITRATE_4K_HIGH * 0.6).toInt()
+                    VVideoCompressQuality.LOW -> (BITRATE_4K_HIGH * 0.4).toInt()
+                    VVideoCompressQuality.VERY_LOW -> (BITRATE_4K_HIGH * 0.25).toInt()
+                    VVideoCompressQuality.ULTRA_LOW -> (BITRATE_4K_HIGH * 0.15).toInt()
+                }
+            }
+            else -> when (config.quality) {
+                VVideoCompressQuality.HIGH -> BITRATE_1080P_HIGH
+                VVideoCompressQuality.MEDIUM -> BITRATE_720P_MEDIUM
+                VVideoCompressQuality.LOW -> BITRATE_480P_LOW
+                VVideoCompressQuality.VERY_LOW -> BITRATE_360P_VERY_LOW
+                VVideoCompressQuality.ULTRA_LOW -> BITRATE_240P_ULTRA_LOW
+            }
+        }
+
+        val frameRate = config.advanced?.frameRate ?: DEFAULT_FRAME_RATE
+
+        // If user explicitly requested a codec, validate and fallback if needed
         config.advanced?.videoCodec?.let { requestedCodec ->
             return when (requestedCodec) {
                 VVideoCodec.H264 -> MimeTypes.VIDEO_H264
                 VVideoCodec.H265 -> {
-                    // Check if device supports H.265 for this resolution
-                    if (is4K && !supportsH265For4K()) {
-                        println("4K FIX: Device doesn't support H.265 for 4K, falling back to H.264")
-                        MimeTypes.VIDEO_H264
-                    } else {
+                    // Validate H.265 configuration
+                    if (validateCompleteCodecConfiguration(targetWidth, targetHeight, targetBitrate, frameRate, MimeTypes.VIDEO_H265)) {
+                        println("4K FIX: H.265 validated successfully")
                         MimeTypes.VIDEO_H265
+                    } else {
+                        println("4K FIX: H.265 validation failed, falling back to H.264")
+                        MimeTypes.VIDEO_H264
                     }
                 }
             }
         }
-        
+
         // Automatic codec selection based on resolution and device capabilities
         return when {
             is4K -> {
-                // For 4K, prefer H.264 for better compatibility
-                if (supportsH264For4K()) {
+                // For 4K, try H.264 first (better compatibility)
+                if (validateCompleteCodecConfiguration(targetWidth, targetHeight, targetBitrate, frameRate, MimeTypes.VIDEO_H264)) {
+                    println("4K FIX: Using H.264 for 4K (validated)")
                     MimeTypes.VIDEO_H264
-                } else if (supportsH265For4K()) {
-                    println("4K FIX: Using H.265 for 4K as H.264 not supported")
+                } else if (validateCompleteCodecConfiguration(targetWidth, targetHeight, targetBitrate, frameRate, MimeTypes.VIDEO_H265)) {
+                    println("4K FIX: Using H.265 for 4K (H.264 validation failed)")
                     MimeTypes.VIDEO_H265
                 } else {
-                    println("4K FIX: No 4K codec support detected, using H.264 anyway")
+                    println("4K FIX: No validated codec found, using H.264 as fallback")
                     MimeTypes.VIDEO_H264
                 }
             }
-            config.quality == VVideoCompressQuality.HIGH -> MimeTypes.VIDEO_H264 // Keep H.264 for high quality
+            config.quality == VVideoCompressQuality.HIGH -> MimeTypes.VIDEO_H264
             else -> {
-                // Use H.265 for better compression on lower qualities if supported
-                if (hasH265Support()) MimeTypes.VIDEO_H265 else MimeTypes.VIDEO_H264
+                // For lower qualities, use H.265 if supported and validated
+                if (validateCompleteCodecConfiguration(targetWidth, targetHeight, targetBitrate, frameRate, MimeTypes.VIDEO_H265)) {
+                    MimeTypes.VIDEO_H265
+                } else {
+                    MimeTypes.VIDEO_H264
+                }
             }
         }
     }
@@ -1129,7 +1359,40 @@ class VVideoCompressionEngine(private val context: Context) {
     fun isCompressing(): Boolean {
         return isCompressionActive.get() && transformer != null
     }
+
+    /**
+     * 4K FIX: Builds a detailed device capability report for error messages
+     */
+    private fun buildDeviceCapabilityReport(): String {
+        return try {
+            val capabilityResult = canHandle4KCompression()
+            val details = capabilityResult.details
+
+            if (details != null) {
+                """
+                Device Capabilities:
+                - RAM: ${details.totalMemoryMB}MB total, ${details.availableMemoryMB}MB available
+                - CPU: ${details.cpuCores} cores, ${details.cpuArchitecture}
+                - API Level: ${Build.VERSION.SDK_INT}
+                - Performance Score: ${details.performanceScore}
+                - H.264 4K Support: ${supportsH264For4K()}
+                - H.265 4K Support: ${supportsH265For4K()}
+
+                Recommendation: Try using MEDIUM quality or lower for better compatibility.
+                """.trimIndent()
+            } else {
+                capabilityResult.reason
+            }
+        } catch (e: Exception) {
+            "Unable to analyze device capabilities: ${e.message}"
+        }
+    }
     
+    /**
+     * Aligns a dimension to the nearest 16-pixel boundary (fixes encoder padding artifacts)
+     */
+    private fun alignTo16(dimension: Int): Int = (dimension / 16) * 16
+
     /**
      * Calculates aspect ratio preserving dimensions for video compression
      */
@@ -1145,55 +1408,72 @@ class VVideoCompressionEngine(private val context: Context) {
         // If custom dimensions are provided, validate they maintain aspect ratio
         if (customWidth != null && customHeight != null) {
             val customAspectRatio: Float = customWidth.toFloat() / customHeight.toFloat()
-            // If custom aspect ratio is close to original, use it
+            val alignedWidth: Int
+            val alignedHeight: Int
             if (abs(customAspectRatio - originalAspectRatio) < 0.01f) {
-                return Pair(
-                    if (customWidth % 2 == 0) customWidth else customWidth - 1,
-                    if (customHeight % 2 == 0) customHeight else customHeight - 1
-                )
+                alignedWidth = customWidth
+                alignedHeight = customHeight
+            } else {
+                alignedWidth = customWidth
+                alignedHeight = (customWidth / originalAspectRatio).toInt()
             }
-            // Otherwise, calculate proper dimensions based on custom width
-            val calculatedHeight: Int = (customWidth / originalAspectRatio).toInt()
-            return Pair(
-                if (customWidth % 2 == 0) customWidth else customWidth - 1,
-                if (calculatedHeight % 2 == 0) calculatedHeight else calculatedHeight - 1
-            )
+            val finalWidth = if (alignedWidth % 16 != 0) alignTo16(alignedWidth) else alignedWidth
+            val finalHeight = if (alignedHeight % 16 != 0) alignTo16(alignedHeight) else alignedHeight
+            if (finalWidth > 0 && finalHeight > 0) {
+                if (finalWidth != alignedWidth || finalHeight != alignedHeight) {
+                    Log.d("VVideoCompressor", "Dimension alignment: ${alignedWidth}x${alignedHeight} → ${finalWidth}x${finalHeight} (16-pixel boundary)")
+                }
+                return Pair(finalWidth, finalHeight)
+            }
+            return Pair(alignedWidth, alignedHeight)
         }
         
         // Quality-based calculation - maintain aspect ratio
         val maxDimensions: Pair<Int, Int> = when (quality) {
             VVideoCompressQuality.HIGH -> {
-                // For HIGH quality, don't exceed 1080p but maintain aspect ratio
-                if (originalWidth <= WIDTH_1080P && originalHeight <= HEIGHT_1080P) {
-                    // Don't upscale, use original dimensions
+                // Issue #7 fix: Always enforce 1080p max for HIGH quality, don't keep 4K
+                // Use max dimension (1920) for both width and height bounds to support both portrait and landscape
+                val maxDimension = max(WIDTH_1080P, HEIGHT_1080P)  // 1920
+                // Always downscale to fit within bounds, but never upscale
+                val (targetWidth, targetHeight) = calculateDimensionsToFitBounds(
+                    originalWidth, originalHeight, maxDimension, maxDimension
+                )
+                // Don't upscale if video is already smaller than target
+                if (originalWidth < targetWidth || originalHeight < targetHeight) {
                     Pair(originalWidth, originalHeight)
                 } else {
-                    // Downscale to fit within 1080p bounds
-                    calculateDimensionsToFitBounds(originalWidth, originalHeight, WIDTH_1080P, HEIGHT_1080P)
+                    Pair(targetWidth, targetHeight)
                 }
             }
             VVideoCompressQuality.MEDIUM -> {
                 // For MEDIUM quality, fit within 720p bounds
-                calculateDimensionsToFitBounds(originalWidth, originalHeight, WIDTH_720P, HEIGHT_720P)
+                val maxDimension = max(WIDTH_720P, HEIGHT_720P)  // 1280
+                calculateDimensionsToFitBounds(originalWidth, originalHeight, maxDimension, maxDimension)
             }
             VVideoCompressQuality.LOW -> {
-                // For LOW quality, fit within 480p bounds  
-                calculateDimensionsToFitBounds(originalWidth, originalHeight, WIDTH_480P, HEIGHT_480P)
+                // For LOW quality, fit within 480p bounds
+                val maxDimension = max(WIDTH_480P, HEIGHT_480P)  // 960
+                calculateDimensionsToFitBounds(originalWidth, originalHeight, maxDimension, maxDimension)
             }
             VVideoCompressQuality.VERY_LOW -> {
                 // For VERY_LOW quality, fit within 360p bounds
-                calculateDimensionsToFitBounds(originalWidth, originalHeight, WIDTH_360P, HEIGHT_360P)
+                val maxDimension = max(WIDTH_360P, HEIGHT_360P)  // 640
+                calculateDimensionsToFitBounds(originalWidth, originalHeight, maxDimension, maxDimension)
             }
             VVideoCompressQuality.ULTRA_LOW -> {
                 // For ULTRA_LOW quality, fit within 240p bounds
-                calculateDimensionsToFitBounds(originalWidth, originalHeight, WIDTH_240P, HEIGHT_240P)
+                val maxDimension = max(WIDTH_240P, HEIGHT_240P)  // 432
+                calculateDimensionsToFitBounds(originalWidth, originalHeight, maxDimension, maxDimension)
             }
         }
-        
-        return Pair(
-            if (maxDimensions.first % 2 == 0) maxDimensions.first else maxDimensions.first - 1,
-            if (maxDimensions.second % 2 == 0) maxDimensions.second else maxDimensions.second - 1
-        )
+        val width = maxDimensions.first
+        val height = maxDimensions.second
+        val finalWidth = if (width % 16 != 0) alignTo16(width) else width
+        val finalHeight = if (height % 16 != 0) alignTo16(height) else height
+        if (finalWidth != width || finalHeight != height) {
+            Log.d("VVideoCompressor", "Dimension alignment: ${width}x${height} → ${finalWidth}x${finalHeight} (16-pixel boundary)")
+        }
+        return Pair(finalWidth, finalHeight)
     }
 
     /**
@@ -1303,22 +1583,24 @@ class VVideoCompressionEngine(private val context: Context) {
         }
         
         val videoEffects = mutableListOf<androidx.media3.common.Effect>()
-        
+
+        // ORIENTATION FIX: Apply rotation BEFORE presentation scaling
+        if (finalRotation != 0) {
+            val rotationDegrees = finalRotation.toFloat()
+            val rotationEffect = ScaleAndRotateTransformation.Builder()
+                .setRotationDegrees(rotationDegrees)
+                .build()
+            videoEffects.add(rotationEffect)
+            println("VVideoCompressionEngine: Applied ${finalRotation}° rotation (auto-correct: $shouldAutoCorrect)")
+        }
+
         // Add presentation effect with properly calculated dimensions
         val presentationEffect = Presentation.createForWidthAndHeight(
             finalWidth,
             finalHeight,
-            Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP  // Better aspect ratio handling
+            Presentation.LAYOUT_SCALE_TO_FIT  // Use SCALE_TO_FIT instead of CROP for better rotation handling
         )
         videoEffects.add(presentationEffect)
-        
-        // ORIENTATION FIX: Apply rotation if needed
-        if (finalRotation != 0) {
-            // Note: Media3 rotation effects require additional implementation
-            // For now, we log the rotation that should be applied
-            println("VVideoCompressionEngine: ORIENTATION FIX - Should apply ${finalRotation}° rotation (auto-correct: $shouldAutoCorrect)")
-            // TODO: Implement Media3 rotation effect when available
-        }
         
         val effects = Effects(
             /* audioProcessors= */ emptyList(),

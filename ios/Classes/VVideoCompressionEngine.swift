@@ -113,14 +113,14 @@ class VVideoCompressionEngine {
         )
     }
     
-    // iOS Quick Fix: Add default bitrate calculation
+    // iOS Quick Fix: Add default bitrate calculation (Issue #7 fix: aligned with Android)
     private func getDefaultBitrate(for quality: VVideoCompressQuality) -> Int {
         switch quality {
         case .high: return 3500000      // 3.5 Mbps
         case .medium: return 1800000    // 1.8 Mbps
-        case .low: return 900000        // 900 kbps
-        case .veryLow: return 500000    // 500 kbps
-        case .ultraLow: return 350000   // 350 kbps
+        case .low: return 500000        // 500 kbps (Issue #7 fix: was 900k)
+        case .veryLow: return 300000    // 300 kbps (Issue #7 fix: was 500k)
+        case .ultraLow: return 200000   // 200 kbps (Issue #7 fix: was 350k)
         }
     }
     
@@ -207,25 +207,63 @@ class VVideoCompressionEngine {
     
     private func needsAdvancedComposition(config: VVideoCompressionConfig) -> Bool {
         guard let advanced = config.advanced else { return false }
-        return advanced.rotation != nil || advanced.brightness != nil || 
+        return advanced.rotation != nil || advanced.brightness != nil ||
                advanced.trimStartMs != nil || advanced.trimEndMs != nil ||
                advanced.removeAudio == true || advanced.customWidth != nil ||
                advanced.customHeight != nil || advanced.autoCorrectOrientation == true
     }
-    
+
+    private func createRotationTransform(angle: Int, sourceSize: CGSize, targetSize: CGSize) -> CGAffineTransform {
+        let radians = CGFloat(angle) * .pi / 180.0
+        var transform = CGAffineTransform(rotationAngle: radians)
+
+        // Add translation to position rotated content correctly
+        switch angle {
+        case 90:
+            transform = transform.translatedBy(x: sourceSize.width, y: 0)
+        case 180:
+            transform = transform.translatedBy(x: sourceSize.width, y: sourceSize.height)
+        case 270:
+            transform = transform.translatedBy(x: 0, y: sourceSize.height)
+        default:
+            break
+        }
+
+        return transform
+    }
+
+    private func calculateScaleFactors(sourceSize: CGSize, targetSize: CGSize, rotation: Int) -> (CGFloat, CGFloat) {
+        if rotation == 90 || rotation == 270 {
+            // For 90/270 rotations, dimensions are swapped
+            let scaleX = targetSize.width / sourceSize.height
+            let scaleY = targetSize.height / sourceSize.width
+            return (scaleX, scaleY)
+        } else {
+            // For 0/180 rotations, dimensions remain same
+            let scaleX = targetSize.width / sourceSize.width
+            let scaleY = targetSize.height / sourceSize.height
+            return (scaleX, scaleY)
+        }
+    }
+
+    /// Aligns a dimension to the nearest 16-pixel boundary (fixes encoder padding artifacts)
+    private func alignTo16(_ dimension: Int) -> Int {
+        return (dimension / 16) * 16
+    }
+
     private func applyAdvancedComposition(exportSession: AVAssetExportSession, videoInfo: VVideoInfo, config: VVideoCompressionConfig) {
         let asset = exportSession.asset
-        
+
         guard let videoTrack = asset.tracks(withMediaType: .video).first else {
             print("VVideoCompressionEngine: No video track found")
             return
         }
-        
+
         // ORIENTATION FIX: Get original orientation and determine if auto-correction is needed
         let naturalSize = videoTrack.naturalSize
         let preferredTransform = videoTrack.preferredTransform
         let shouldAutoCorrect = config.advanced?.autoCorrectOrientation == true
-        
+
         // Calculate rotation - either from config or auto-detected
         var rotation = config.advanced?.rotation ?? 0
         if shouldAutoCorrect && rotation == 0 {
@@ -235,46 +273,59 @@ class VVideoCompressionEngine {
             rotation = Int(degrees.rounded())
             print("VVideoCompressionEngine: Auto-detected rotation: \(rotation)°")
         }
-        
+
         let customWidth = config.advanced?.customWidth ?? videoInfo.width
         let customHeight = config.advanced?.customHeight ?? videoInfo.height
-        
-        // FIXED: Proper dimension adjustment for rotation
-        let (renderWidth, renderHeight) = rotation == 90 || rotation == 270 ? 
-            (customHeight, customWidth) : (customWidth, customHeight)
-        
+        let renderWidth = customWidth % 16 != 0 ? alignTo16(customWidth) : customWidth
+        let renderHeight = customHeight % 16 != 0 ? alignTo16(customHeight) : customHeight
+        if renderWidth != customWidth || renderHeight != customHeight {
+            print("VVideoCompressionEngine: Dimension alignment: \(customWidth)x\(customHeight) → \(renderWidth)x\(renderHeight) (16-pixel boundary)")
+        }
         print("VVideoCompressionEngine: ORIENTATION FIXED: \(rotation)° with size: \(renderWidth)x\(renderHeight)")
-        
+
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = CGSize(width: renderWidth, height: renderHeight)
         videoComposition.frameDuration = CMTime(value: 1, timescale: Int32(Self.DEFAULT_FRAME_RATE))
-        
+
         let instruction = AVMutableVideoCompositionInstruction()
         instruction.timeRange = CMTimeRange(start: .zero, duration: asset.duration)
-        
+
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-        
-        // ORIENTATION FIX: Use preferred transform as base and apply additional rotation if needed
-        var transform = shouldAutoCorrect ? preferredTransform : CGAffineTransform.identity
-        
-        if rotation != 0 {
-            let angle = CGFloat(rotation) * .pi / 180.0
-            let rotationTransform = CGAffineTransform(rotationAngle: angle)
-            transform = transform.concatenating(rotationTransform)
-            print("VVideoCompressionEngine: Applied \(rotation)° rotation with auto-correction: \(shouldAutoCorrect)")
+
+        // ORIENTATION FIX: Create proper transform - use preferred transform XOR manual rotation, not both
+        var transform: CGAffineTransform
+
+        if shouldAutoCorrect && rotation != 0 {
+            // Use auto-detected rotation with proper translation
+            transform = createRotationTransform(angle: rotation, sourceSize: naturalSize, targetSize: CGSize(width: renderWidth, height: renderHeight))
+            print("VVideoCompressionEngine: Applied auto-corrected \(rotation)° rotation")
+        } else if !shouldAutoCorrect && rotation != 0 {
+            // Use manual rotation with proper translation
+            transform = createRotationTransform(angle: rotation, sourceSize: naturalSize, targetSize: CGSize(width: renderWidth, height: renderHeight))
+            print("VVideoCompressionEngine: Applied manual \(rotation)° rotation")
+        } else {
+            // No rotation needed, use identity
+            transform = CGAffineTransform.identity
         }
-        
-        // Apply scaling if needed
-        let scaleX = CGFloat(renderWidth) / naturalSize.width
-        let scaleY = CGFloat(renderHeight) / naturalSize.height
+
+        // Apply scaling to fit render size
+        let (scaleX, scaleY) = calculateScaleFactors(sourceSize: naturalSize, targetSize: CGSize(width: renderWidth, height: renderHeight), rotation: rotation)
         let scale = min(scaleX, scaleY)
-        
-        if scale != 1.0 {
+
+        if scale != 1.0 && scale > 0 {
             let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
             transform = transform.concatenating(scaleTransform)
             print("VVideoCompressionEngine: Applied scale: \(scale)")
         }
-        
+
+        // Center content if needed
+        let translationX = (CGFloat(renderWidth) - naturalSize.width * scale) / 2.0
+        let translationY = (CGFloat(renderHeight) - naturalSize.height * scale) / 2.0
+        if translationX != 0 || translationY != 0 {
+            let centerTransform = CGAffineTransform(translationX: translationX, y: translationY)
+            transform = centerTransform.concatenating(transform)
+        }
+
         layerInstruction.setTransform(transform, at: .zero)
         
         // iOS Quick Fix: Improved color adjustments
@@ -329,16 +380,35 @@ class VVideoCompressionEngine {
         case .completed:
             let endTime = Date().timeIntervalSince1970 * 1000
             let timeTaken = Int64(endTime - startTime)
-            
+
             callback.onProgress(1.0)
-            
+
+            // Issue #7 fix: Check if compressed file is larger than original
+            let compressedSizeBytes = getFileSize(for: outputURL)
+            let originalSizeBytes = videoInfo.fileSizeBytes
+            let compressionRatio = Float(compressedSizeBytes) / Float(originalSizeBytes)
+
+            // If compression didn't save space (>= 95% of original), use original instead
+            let finalURL: URL
+            if compressionRatio >= 0.95 {
+                print("VVideoCompressionEngine: Issue #7 - Compressed file (\(compressedSizeBytes)B) is too close to original (\(originalSizeBytes)B). Using original.")
+                try? FileManager.default.removeItem(at: outputURL)
+                guard let inputURL = createURL(from: videoInfo.path) else {
+                    callback.onError("Failed to fallback to original file")
+                    return
+                }
+                finalURL = inputURL
+            } else {
+                finalURL = outputURL
+            }
+
             let result = createCompressionResult(
                 originalVideo: videoInfo,
-                compressedFile: outputURL,
+                compressedFile: finalURL,
                 quality: config.quality,
                 timeTaken: timeTaken
             )
-            
+
             callback.onComplete(result)
             
         case .failed:
@@ -398,15 +468,15 @@ class VVideoCompressionEngine {
         do {
             let cgImage = try imageGenerator.copyCGImage(at: time, actualTime: nil)
             let image = UIImage(cgImage: cgImage)
-            
+
             let outputDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("VideoThumbnails")
             try? FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-            
-            let timestamp = Int(Date().timeIntervalSince1970)
+
+            let timestamp = Int(Date().timeIntervalSince1970 * 1000)
             let videoBaseName = URL(fileURLWithPath: videoInfo.name).deletingPathExtension().lastPathComponent
             let fileExtension = config.format == .png ? ".png" : ".jpg"
-            let filename = "thumb_\(videoBaseName)_\(timestamp)\(fileExtension)"
+            let filename = "thumb_\(videoBaseName)_\(config.timeMs)ms_\(timestamp)\(fileExtension)"
             let outputFile = outputDirectory.appendingPathComponent(filename)
             
             let imageData = config.format == .png ? image.pngData() : image.jpegData(compressionQuality: 0.8)
@@ -451,9 +521,9 @@ class VVideoCompressionEngine {
         
         switch quality {
         case .high: return AVAssetExportPreset1920x1080
-        case .medium: return  AVAssetExportPreset1280x720
-        case .low: return  AVAssetExportPreset960x540
-        case .veryLow: return  AVAssetExportPreset640x480
+        case .medium: return AVAssetExportPreset1280x720
+        case .low: return AVAssetExportPreset640x480  // Issue #7 fix: 960x540 preset doesn't exist
+        case .veryLow: return AVAssetExportPreset640x480
         case .ultraLow: return AVAssetExportPresetLowQuality
         }
     }

@@ -484,6 +484,199 @@ void main() {
       });
     });
 
+    group('Rotation and Orientation', () {
+      test('should handle portrait video with 90 degree rotation', () {
+        const portraitConfig = VVideoAdvancedConfig(
+          rotation: 90,
+          customWidth: 1080,
+          customHeight: 1920,
+        );
+        expect(portraitConfig.isValid(), true);
+      });
+
+      test('should handle landscape video with 0 degree rotation', () {
+        const landscapeConfig = VVideoAdvancedConfig(
+          rotation: 0,
+          customWidth: 1920,
+          customHeight: 1080,
+        );
+        expect(landscapeConfig.isValid(), true);
+      });
+
+      test('should handle upside-down video with 180 degree rotation', () {
+        const upsideDownConfig = VVideoAdvancedConfig(
+          rotation: 180,
+          customWidth: 1920,
+          customHeight: 1080,
+        );
+        expect(upsideDownConfig.isValid(), true);
+      });
+
+      test('should handle 270 degree rotation', () {
+        const rotated270Config = VVideoAdvancedConfig(
+          rotation: 270,
+          customWidth: 1080,
+          customHeight: 1920,
+        );
+        expect(rotated270Config.isValid(), true);
+      });
+
+      test('should enable auto-correction of orientation', () {
+        const autoCorrectConfig = VVideoAdvancedConfig(
+          autoCorrectOrientation: true,
+        );
+        expect(autoCorrectConfig.isValid(), true);
+      });
+
+      test('should reject invalid rotation angles', () {
+        const invalidRotationConfig = VVideoAdvancedConfig(
+          rotation: 45,
+        );
+        expect(invalidRotationConfig.isValid(), false);
+      });
+
+      test('should compress vertical video with auto-correct', () async {
+        const videoPath = '/path/to/vertical_video.mp4';
+        const config = VVideoCompressionConfig.high(
+          advanced: VVideoAdvancedConfig(
+            autoCorrectOrientation: true,
+          ),
+        );
+
+        final result = await compressor.compressVideo(videoPath, config);
+        expect(result, isNotNull);
+        expect(result!.compressedFilePath, isNotEmpty);
+      });
+
+      test('should compress vertical video with manual 90 rotation', () async {
+        const videoPath = '/path/to/vertical_video.mp4';
+        const config = VVideoCompressionConfig.high(
+          advanced: VVideoAdvancedConfig(
+            rotation: 90,
+            customWidth: 1080,
+            customHeight: 1920,
+          ),
+        );
+
+        final result = await compressor.compressVideo(videoPath, config);
+        expect(result, isNotNull);
+        expect(config.advanced!.rotation, 90);
+      });
+
+      test('should compress with custom dimensions and rotation', () async {
+        const videoPath = '/path/to/video.mp4';
+        const config = VVideoCompressionConfig.medium(
+          advanced: VVideoAdvancedConfig(
+            rotation: 90,
+            customWidth: 720,
+            customHeight: 1280,
+          ),
+        );
+
+        expect(config.isValid(), true);
+        final result = await compressor.compressVideo(videoPath, config);
+        expect(result, isNotNull);
+      });
+
+      test('should handle 4K vertical video compression', () {
+        const config = VVideoCompressionConfig.high(
+          advanced: VVideoAdvancedConfig(
+            autoCorrectOrientation: true,
+            customWidth: 2160,
+            customHeight: 3840,
+          ),
+        );
+
+        expect(config.isValid(), true);
+      });
+    });
+
+    group('Dimension Alignment (Issue #9)', () {
+      test('alignTo16 helper function should align correctly', () {
+        expect(alignTo16(1920), 1920); // Already aligned
+        expect(alignTo16(1080), 1072); // 1080 → 1072 (rounds down to nearest 16-multiple)
+        expect(alignTo16(1082), 1072); // 1082 → 1072
+        expect(alignTo16(720), 720); // Already aligned
+        expect(alignTo16(1280), 1280); // Already aligned
+        expect(alignTo16(1278), 1264); // 1278 → 1264
+      });
+
+      test('alignTo16 should handle edge cases', () {
+        expect(alignTo16(1), 0); // 1 → 0
+        expect(alignTo16(15), 0); // 15 → 0
+        expect(alignTo16(16), 16); // 16 → 16
+        expect(alignTo16(17), 16); // 17 → 16
+        expect(alignTo16(31), 16); // 31 → 16
+        expect(alignTo16(32), 32); // 32 → 32
+      });
+
+      test('DimensionHandling enum should have correct values', () {
+        expect(VDimensionHandling.autoAlign.value, 'AUTO_ALIGN');
+        expect(VDimensionHandling.letterbox.value, 'LETTERBOX');
+        expect(VDimensionHandling.exact.value, 'EXACT');
+      });
+
+      test('VVideoAdvancedConfig should include dimensionHandling', () {
+        const config = VVideoAdvancedConfig(
+          dimensionHandling: VDimensionHandling.autoAlign,
+        );
+        expect(config.dimensionHandling, VDimensionHandling.autoAlign);
+      });
+
+      test('VVideoAdvancedConfig.toMap should serialize dimensionHandling', () {
+        const config = VVideoAdvancedConfig(
+          dimensionHandling: VDimensionHandling.autoAlign,
+        );
+        final map = config.toMap();
+        expect(map['dimensionHandling'], 'AUTO_ALIGN');
+      });
+
+      test('VVideoAdvancedConfig.fromMap should deserialize dimensionHandling', () {
+        final map = {
+          'dimensionHandling': 'AUTO_ALIGN',
+        };
+        final config = VVideoAdvancedConfig.fromMap(map);
+        expect(config.dimensionHandling, VDimensionHandling.autoAlign);
+      });
+
+      test('should validate compression with non-aligned dimensions', () {
+        const config = VVideoCompressionConfig.medium(
+          advanced: VVideoAdvancedConfig(
+            customWidth: 1082,
+            customHeight: 1278,
+            dimensionHandling: VDimensionHandling.autoAlign,
+          ),
+        );
+        expect(config.isValid(), true);
+      });
+
+      test('factory configs should default to autoAlign', () {
+        final maxComp = VVideoAdvancedConfig.maximumCompression();
+        expect(maxComp.dimensionHandling, VDimensionHandling.autoAlign);
+
+        final socialMedia = VVideoAdvancedConfig.socialMediaOptimized();
+        expect(socialMedia.dimensionHandling, VDimensionHandling.autoAlign);
+
+        final mobile = VVideoAdvancedConfig.mobileOptimized();
+        expect(mobile.dimensionHandling, VDimensionHandling.autoAlign);
+      });
+
+      test('should compress with odd dimension dimensions', () async {
+        const videoPath = '/path/to/video.mp4';
+        const config = VVideoCompressionConfig.medium(
+          advanced: VVideoAdvancedConfig(
+            customWidth: 1082, // Not 16-aligned
+            customHeight: 1278, // Not 16-aligned
+            dimensionHandling: VDimensionHandling.autoAlign,
+          ),
+        );
+
+        expect(config.isValid(), true);
+        final result = await compressor.compressVideo(videoPath, config);
+        expect(result, isNotNull);
+      });
+    });
+
     group('Cleanup Operations', () {
       test('should perform cleanup', () async {
         await expectLater(

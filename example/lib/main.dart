@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:v_video_compressor/v_video_compressor.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:gal/gal.dart';
-import '4k_test_page.dart';
+import 'four_k_test_page.dart';
 
 void main() {
   // Configure logging for development
@@ -43,7 +43,6 @@ class _MyHomePageState extends State<MyHomePage> {
   double _compressionProgress = 0.0;
   bool _isCompressing = false;
   VVideoInfo? _videoInfo;
-  VVideoCompressionEstimate? _estimate;
   VVideoCompressionResult? _result;
   bool _saveToGallery = false;
   String? _thumbnailPath;
@@ -275,7 +274,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       const SizedBox(height: 8),
                       ElevatedButton(
                         onPressed: () => _saveCompressedToGallery(
-                          _result!.compressedFilePath!,
+                          _result!.compressedFilePath,
                         ),
                         child: const Text('Save Compressed Video to Gallery'),
                       ),
@@ -345,7 +344,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       if (result != null) {
         if (_saveToGallery) {
-          await _saveCompressedToGallery(result.compressedFilePath!);
+          await _saveCompressedToGallery(result.compressedFilePath);
         }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

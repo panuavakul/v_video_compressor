@@ -408,18 +408,25 @@ class VVideoCompressorPlugin: FlutterPlugin, MethodCallHandler, EventChannel.Str
                     return@launch
                 }
                 
-                val thumbnails = mutableListOf<Map<String, Any?>>()
-                
-                for (configMap in configMaps) {
-                    val config = VVideoThumbnailConfig.fromMap(configMap as Map<String, Any?>)
-                    val thumbnail = compressionEngine.getVideoThumbnail(videoInfo, config)
-                    
-                    if (thumbnail != null) {
-                        thumbnails.add(thumbnail.toMap())
+                // Generate thumbnails on IO thread to avoid blocking the main thread
+                val thumbnails = withContext(Dispatchers.IO) {
+                    val results = mutableListOf<Map<String, Any?>>()
+
+                    for (configMap in configMaps) {
+                        val config = VVideoThumbnailConfig.fromMap(configMap as Map<String, Any?>)
+                        val thumbnail = compressionEngine.getVideoThumbnail(videoInfo, config)
+
+                        if (thumbnail != null) {
+                            results.add(thumbnail.toMap())
+                        }
                     }
+
+                    results
                 }
-                
+
                 result.success(thumbnails)
+            } catch (e: OutOfMemoryError) {
+                result.error("OUT_OF_MEMORY", "Out of memory during thumbnail generation. Try smaller dimensions or fewer thumbnails.", null)
             } catch (e: Exception) {
                 result.error("ERROR", "Failed to get video thumbnails: ${e.message}", null)
             }

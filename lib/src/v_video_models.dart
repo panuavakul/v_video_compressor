@@ -1,6 +1,18 @@
 /// Video compression models and data classes
 library;
 
+/// Dimension alignment handling behavior
+enum VDimensionHandling {
+  autoAlign('AUTO_ALIGN', 'Auto align dimensions to 16-pixel boundaries when needed'),
+  letterbox('LETTERBOX', 'Add black bars to maintain aspect ratio during alignment'),
+  exact('EXACT', 'Keep exact dimensions without alignment (may cause artifacts)');
+
+  const VDimensionHandling(this.value, this.description);
+
+  final String value;
+  final String description;
+}
+
 /// Compression quality levels
 enum VVideoCompressQuality {
   high('HIGH', '1080p HD', 'High quality with better file size'),
@@ -70,6 +82,10 @@ enum VThumbnailFormat {
   final String mimeType;
   final String extension;
 }
+
+/// Helper function to align dimensions to 16-pixel boundaries
+/// Fixes encoder padding artifacts by ensuring dimensions align with encoder requirements
+int alignTo16(int dimension) => (dimension ~/ 16) * 16;
 
 /// Compression progress status
 enum VVideoCompressionStatus {
@@ -171,6 +187,9 @@ class VVideoAdvancedConfig {
   /// Convert audio to mono for smaller file size
   final bool? monoAudio;
 
+  /// Dimension alignment handling (null = smart auto-detection)
+  final VDimensionHandling? dimensionHandling;
+
   const VVideoAdvancedConfig({
     this.videoBitrate,
     this.audioBitrate,
@@ -200,6 +219,7 @@ class VVideoAdvancedConfig {
     this.aggressiveCompression,
     this.noiseReduction,
     this.monoAudio,
+    this.dimensionHandling,
   });
 
   /// Validates the advanced configuration
@@ -311,6 +331,7 @@ class VVideoAdvancedConfig {
       'aggressiveCompression': aggressiveCompression,
       'noiseReduction': noiseReduction,
       'monoAudio': monoAudio,
+      'dimensionHandling': dimensionHandling?.value,
     };
   }
 
@@ -355,6 +376,10 @@ class VVideoAdvancedConfig {
       aggressiveCompression: map['aggressiveCompression'],
       noiseReduction: map['noiseReduction'],
       monoAudio: map['monoAudio'],
+      dimensionHandling: VDimensionHandling.values.cast<VDimensionHandling?>().firstWhere(
+            (handling) => handling?.value == map['dimensionHandling'],
+            orElse: () => null,
+          ),
     );
   }
 
@@ -364,59 +389,62 @@ class VVideoAdvancedConfig {
     bool keepAudio = false,
   }) {
     return VVideoAdvancedConfig(
-      videoCodec: VVideoCodec.h265, // H.265 for 30-50% better compression
-      videoBitrate: targetBitrate ?? 300000, // Very low bitrate (300 kbps)
-      audioBitrate: keepAudio ? 64000 : null, // Low audio bitrate or remove
-      removeAudio: !keepAudio, // Remove audio if not needed
-      crf: 28, // Lower quality for smaller size
-      twoPassEncoding: true, // Better compression efficiency
-      hardwareAcceleration: true, // Faster encoding
-      variableBitrate: true, // Better compression
-      keyframeInterval: 10, // Larger GOP for better compression
-      bFrames: 3, // Enable B-frames
-      reducedFrameRate: 24.0, // Reduce to 24 FPS
-      aggressiveCompression: true, // Enable all aggressive settings
-      noiseReduction: true, // Remove noise for better compression
-      monoAudio: !keepAudio ? null : true, // Mono audio if keeping audio
-      audioSampleRate: keepAudio ? 22050 : null, // Lower sample rate
-      audioChannels: keepAudio ? 1 : null, // Mono audio
-      autoCorrectOrientation: true, // Preserve original orientation
+      videoCodec: VVideoCodec.h265,
+      videoBitrate: targetBitrate ?? 300000,
+      audioBitrate: keepAudio ? 64000 : null,
+      removeAudio: !keepAudio,
+      crf: 28,
+      twoPassEncoding: true,
+      hardwareAcceleration: true,
+      variableBitrate: true,
+      keyframeInterval: 10,
+      bFrames: 3,
+      reducedFrameRate: 24.0,
+      aggressiveCompression: true,
+      noiseReduction: true,
+      monoAudio: !keepAudio ? null : true,
+      audioSampleRate: keepAudio ? 22050 : null,
+      audioChannels: keepAudio ? 1 : null,
+      autoCorrectOrientation: true,
+      dimensionHandling: VDimensionHandling.autoAlign,
     );
   }
 
   /// Creates a social media optimized compression configuration
   factory VVideoAdvancedConfig.socialMediaOptimized() {
     return VVideoAdvancedConfig(
-      videoCodec: VVideoCodec.h265, // H.265 for better compression
-      videoBitrate: 800000, // 800 kbps for social media
-      audioBitrate: 96000, // 96 kbps audio
-      crf: 25, // Good quality/size balance
-      variableBitrate: true, // Better compression
-      keyframeInterval: 5, // Good for streaming
-      bFrames: 2, // Moderate B-frames
-      reducedFrameRate: 30.0, // 30 FPS for social media
-      aggressiveCompression: true, // Enable aggressive settings
-      audioSampleRate: 44100, // Standard sample rate
-      audioChannels: 2, // Stereo audio
-      autoCorrectOrientation: true, // Critical for social media vertical videos
+      videoCodec: VVideoCodec.h265,
+      videoBitrate: 800000,
+      audioBitrate: 96000,
+      crf: 25,
+      variableBitrate: true,
+      keyframeInterval: 5,
+      bFrames: 2,
+      reducedFrameRate: 30.0,
+      aggressiveCompression: true,
+      audioSampleRate: 44100,
+      audioChannels: 2,
+      autoCorrectOrientation: true,
+      dimensionHandling: VDimensionHandling.autoAlign,
     );
   }
 
   /// Creates a mobile optimized compression configuration
   factory VVideoAdvancedConfig.mobileOptimized() {
     return VVideoAdvancedConfig(
-      videoCodec: VVideoCodec.h264, // H.264 for compatibility
-      videoBitrate: 1500000, // 1.5 Mbps for mobile
-      audioBitrate: 128000, // 128 kbps audio
-      crf: 23, // Good quality
-      hardwareAcceleration: true, // Mobile GPU acceleration
-      variableBitrate: true, // Better compression
-      keyframeInterval: 3, // Good for mobile playback
-      bFrames: 1, // Light B-frames for mobile
-      reducedFrameRate: 30.0, // 30 FPS
-      audioSampleRate: 44100, // Standard sample rate
-      audioChannels: 2, // Stereo audio
-      autoCorrectOrientation: true, // Essential for mobile vertical videos
+      videoCodec: VVideoCodec.h264,
+      videoBitrate: 1500000,
+      audioBitrate: 128000,
+      crf: 23,
+      hardwareAcceleration: true,
+      variableBitrate: true,
+      keyframeInterval: 3,
+      bFrames: 1,
+      reducedFrameRate: 30.0,
+      audioSampleRate: 44100,
+      audioChannels: 2,
+      autoCorrectOrientation: true,
+      dimensionHandling: VDimensionHandling.autoAlign,
     );
   }
 }
@@ -842,6 +870,20 @@ class VVideoThumbnailConfig {
       'quality': quality,
       'outputPath': outputPath,
     };
+  }
+
+  factory VVideoThumbnailConfig.fromMap(Map<String, dynamic> map) {
+    return VVideoThumbnailConfig(
+      timeMs: map['timeMs']?.toInt() ?? 0,
+      maxWidth: map['maxWidth']?.toInt(),
+      maxHeight: map['maxHeight']?.toInt(),
+      format: VThumbnailFormat.values.firstWhere(
+        (f) => f.value == map['format'],
+        orElse: () => VThumbnailFormat.jpeg,
+      ),
+      quality: map['quality']?.toInt() ?? 80,
+      outputPath: map['outputPath'] as String?,
+    );
   }
 }
 

@@ -9,7 +9,7 @@
 /// - Comprehensive error handling and configurable logging
 /// - Optional ID-based compression tracking
 ///
-/// Version: 1.1.0
+/// Version: 2.0.0
 /// Author: V Chat SDK Team
 /// License: MIT
 library;
@@ -30,6 +30,7 @@ export 'src/v_video_models.dart'
         VAudioCodec,
         VEncodingSpeed,
         VThumbnailFormat,
+        VDimensionHandling,
         VVideoAdvancedConfig,
         VVideoInfo,
         VVideoCompressionConfig,
@@ -37,7 +38,8 @@ export 'src/v_video_models.dart'
         VVideoCompressionResult,
         VVideoThumbnailConfig,
         VVideoThumbnailResult,
-        VVideoProgressEvent;
+        VVideoProgressEvent,
+        alignTo16;
 export 'src/v_video_stream_manager.dart' show VVideoStreamManager;
 
 /// V Video Compressor - A focused Flutter plugin for efficient video compression

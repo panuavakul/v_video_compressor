@@ -482,6 +482,5 @@ class _FourKTestPageState extends State<FourKTestPage> {
     setState(() {
       _logOutput += '[$timestamp] $message\n';
     });
-    print('4K TEST: $message'); // Also print to console
   }
 }

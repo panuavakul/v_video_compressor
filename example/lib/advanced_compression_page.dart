@@ -616,7 +616,7 @@ class _AdvancedCompressionPageState extends State<AdvancedCompressionPage> {
 
   Widget _buildQualityDropdown() {
     return DropdownButtonFormField<VVideoCompressQuality>(
-      value: _selectedQuality,
+      initialValue: _selectedQuality,
       decoration: const InputDecoration(
         labelText: 'Base Quality Preset',
         border: OutlineInputBorder(),
@@ -647,7 +647,7 @@ class _AdvancedCompressionPageState extends State<AdvancedCompressionPage> {
 
   Widget _buildCodecDropdown() {
     return DropdownButtonFormField<VVideoCodec?>(
-      value: _selectedVideoCodec,
+      initialValue: _selectedVideoCodec,
       decoration: const InputDecoration(
         labelText: 'Video Codec',
         border: OutlineInputBorder(),
@@ -677,7 +677,7 @@ class _AdvancedCompressionPageState extends State<AdvancedCompressionPage> {
 
   Widget _buildAudioCodecDropdown() {
     return DropdownButtonFormField<VAudioCodec?>(
-      value: _selectedAudioCodec,
+      initialValue: _selectedAudioCodec,
       decoration: const InputDecoration(
         labelText: 'Audio Codec',
         border: OutlineInputBorder(),
@@ -707,7 +707,7 @@ class _AdvancedCompressionPageState extends State<AdvancedCompressionPage> {
 
   Widget _buildEncodingSpeedDropdown() {
     return DropdownButtonFormField<VEncodingSpeed?>(
-      value: _selectedEncodingSpeed,
+      initialValue: _selectedEncodingSpeed,
       decoration: const InputDecoration(
         labelText: 'Encoding Speed',
         border: OutlineInputBorder(),
@@ -737,7 +737,7 @@ class _AdvancedCompressionPageState extends State<AdvancedCompressionPage> {
 
   Widget _buildRotationDropdown() {
     return DropdownButtonFormField<int>(
-      value: _selectedRotation,
+      initialValue: _selectedRotation,
       decoration: const InputDecoration(
         labelText: 'Rotation',
         border: OutlineInputBorder(),

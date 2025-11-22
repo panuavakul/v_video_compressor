@@ -186,13 +186,8 @@ class VideoCompressionService {
   /// Start listening to global progress
   static void startListening() {
     _subscription = VVideoCompressor.progressStream.listen((event) {
-      // Handle progress updates
-      print('Service received progress: ${event.progressFormatted}');
-
+      // Handle progress updates - service receives progress updates
       // You can emit to other streams, update state management, etc.
-      if (event.isBatchOperation) {
-        print('Batch operation: ${event.batchProgressDescription}');
-      }
     });
   }
 
