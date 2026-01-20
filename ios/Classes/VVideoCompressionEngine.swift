@@ -261,7 +261,7 @@ class VVideoCompressionEngine {
 
         // ORIENTATION FIX: Get original orientation and determine if auto-correction is needed
         let naturalSize = videoTrack.naturalSize
-        let actualSize = videoTrack.size
+        let actualSize = videoTrack.actualSize
         let orientation = videoTrack.getOrientation();
         
         let effectiveSize = orientation.isPortrait ? actualSize : naturalSize
@@ -326,8 +326,8 @@ class VVideoCompressionEngine {
         }
 
         // Center content if needed
-        let translationX = (CGFloat(renderWidth) - naturalSize.width * scale) / 2.0
-        let translationY = (CGFloat(renderHeight) - naturalSize.height * scale) / 2.0
+        let translationX = (CGFloat(renderWidth) - effectiveSize.width * scale) / 2.0
+        let translationY = (CGFloat(renderHeight) - effectiveSize.height * scale) / 2.0
         if translationX != 0 || translationY != 0 {
             let centerTransform = CGAffineTransform(translationX: translationX, y: translationY)
             transform = centerTransform.concatenating(transform)
@@ -685,7 +685,7 @@ class VVideoCompressionEngine {
 
 
 extension AVAssetTrack {
-    var size: CGSize {
+    var actualSize: CGSize {
         let orientation = getOrientation()
         switch orientation {
         case .portrait, .portraitUpsideDown:
