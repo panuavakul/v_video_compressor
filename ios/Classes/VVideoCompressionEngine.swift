@@ -267,14 +267,8 @@ class VVideoCompressionEngine {
         let effectiveSize = orientation.isPortrait ? actualSize : naturalSize
         
         let preferredTransform = videoTrack.preferredTransform
-<<<<<<< HEAD
         let shouldAutoCorrect = config.advanced?.autoCorrectOrientation == true
 
-=======
-       let shouldAutoCorrect = config.advanced?.autoCorrectOrientation == true
-        
-        
->>>>>>> 6754618 (fix: Fix problem whe portrait video isn't correctly render)
         // Calculate rotation - either from config or auto-detected
         var rotation = config.advanced?.rotation ?? 0
         if shouldAutoCorrect && rotation == 0 {
