@@ -259,12 +259,21 @@ class VVideoCompressionEngine {
             return
         }
 
-        let naturalSize = videoTrack.naturalSize
+        // ORIENTATION FIX: Get original orientation and determine if auto-correction is needed
+        let actualSize = videoTrack.actualSize
         let preferredTransform = videoTrack.preferredTransform
         let shouldAutoCorrect = config.advanced?.autoCorrectOrientation == true
-        let manualRotation = config.advanced?.rotation ?? 0
 
-        // Determine target dimensions
+        // Calculate rotation - either from config or auto-detected
+        var rotation = config.advanced?.rotation ?? 0
+        if shouldAutoCorrect && rotation == 0 {
+            // Auto-detect rotation from preferred transform
+            let radians = atan2(preferredTransform.b, preferredTransform.a)
+            let degrees = radians * 180.0 / .pi
+            rotation = Int(degrees.rounded())
+            print("VVideoCompressionEngine: Auto-detected rotation: \(rotation)°")
+        }
+
         let customWidth = config.advanced?.customWidth ?? videoInfo.width
         let customHeight = config.advanced?.customHeight ?? videoInfo.height
         let renderWidth = customWidth % 16 != 0 ? alignTo16(customWidth) : customWidth
@@ -272,6 +281,7 @@ class VVideoCompressionEngine {
         if renderWidth != customWidth || renderHeight != customHeight {
             print("VVideoCompressionEngine: Dimension alignment: \(customWidth)x\(customHeight) → \(renderWidth)x\(renderHeight) (16-pixel boundary)")
         }
+        print("VVideoCompressionEngine: ORIENTATION FIXED: \(rotation)° with size: \(renderWidth)x\(renderHeight)")
 
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = CGSize(width: renderWidth, height: renderHeight)
@@ -282,87 +292,38 @@ class VVideoCompressionEngine {
 
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
 
-        // Create transform based on mode
+        // ORIENTATION FIX: Create proper transform - use preferred transform XOR manual rotation, not both
         var transform: CGAffineTransform
-        
-        if shouldAutoCorrect {
-            // Use preferredTransform to correct orientation
-            transform = preferredTransform
-            print("VVideoCompressionEngine: Using preferredTransform for auto-correction")
-            
-            // Calculate actual displayed size after applying preferredTransform
-            let transformedSize = naturalSize.applying(preferredTransform)
-            let actualWidth = abs(transformedSize.width)
-            let actualHeight = abs(transformedSize.height)
-            
-            // Scale to fit render size
-            let scaleX = CGFloat(renderWidth) / actualWidth
-            let scaleY = CGFloat(renderHeight) / actualHeight
-            let scale = min(scaleX, scaleY)
-            
-            transform = transform.scaledBy(x: scale, y: scale)
-            
-            // Center the content
-            let scaledWidth = actualWidth * scale
-            let scaledHeight = actualHeight * scale
-            let tx = (CGFloat(renderWidth) - scaledWidth) / 2.0
-            let ty = (CGFloat(renderHeight) - scaledHeight) / 2.0
-            transform = transform.translatedBy(x: tx, y: ty)
-            
-            print("VVideoCompressionEngine: Auto-corrected with scale: \(scale), translation: (\(tx), \(ty))")
-            
-        } else if manualRotation != 0 {
-            // Apply manual rotation from scratch (no preferredTransform)
-            transform = createRotationTransform(angle: manualRotation, sourceSize: naturalSize, targetSize: CGSize(width: renderWidth, height: renderHeight))
-            
-            // Calculate dimensions after rotation
-            let rotatedWidth = (manualRotation == 90 || manualRotation == 270) ? naturalSize.height : naturalSize.width
-            let rotatedHeight = (manualRotation == 90 || manualRotation == 270) ? naturalSize.width : naturalSize.height
-            
-            // Scale to fit render size
-            let scaleX = CGFloat(renderWidth) / rotatedWidth
-            let scaleY = CGFloat(renderHeight) / rotatedHeight
-            let scale = min(scaleX, scaleY)
-            
-            if scale != 1.0 {
-                transform = transform.scaledBy(x: scale, y: scale)
-            }
-            
-            // Center the content
-            let scaledWidth = rotatedWidth * scale
-            let scaledHeight = rotatedHeight * scale
-            let tx = (CGFloat(renderWidth) - scaledWidth) / 2.0
-            let ty = (CGFloat(renderHeight) - scaledHeight) / 2.0
-            
-            if tx != 0 || ty != 0 {
-                transform = CGAffineTransform(translationX: tx, y: ty).concatenating(transform)
-            }
-            
-            print("VVideoCompressionEngine: Manual rotation \(manualRotation)° with scale: \(scale)")
-            
+
+        if shouldAutoCorrect && rotation != 0 {
+            // Use auto-detected rotation with proper translation
+            transform = createRotationTransform(angle: rotation, sourceSize: actualSize, targetSize: CGSize(width: renderWidth, height: renderHeight))
+            print("VVideoCompressionEngine: Applied auto-corrected \(rotation)° rotation")
+        } else if !shouldAutoCorrect && rotation != 0 {
+            // Use manual rotation with proper translation
+            transform = createRotationTransform(angle: rotation, sourceSize: actualSize, targetSize: CGSize(width: renderWidth, height: renderHeight))
+            print("VVideoCompressionEngine: Applied manual \(rotation)° rotation")
         } else {
-            // No rotation, just scale to fit
+            // No rotation needed, use identity
             transform = CGAffineTransform.identity
-            
-            let scaleX = CGFloat(renderWidth) / naturalSize.width
-            let scaleY = CGFloat(renderHeight) / naturalSize.height
-            let scale = min(scaleX, scaleY)
-            
-            if scale != 1.0 {
-                transform = transform.scaledBy(x: scale, y: scale)
-            }
-            
-            // Center the content
-            let scaledWidth = naturalSize.width * scale
-            let scaledHeight = naturalSize.height * scale
-            let tx = (CGFloat(renderWidth) - scaledWidth) / 2.0
-            let ty = (CGFloat(renderHeight) - scaledHeight) / 2.0
-            
-            if tx != 0 || ty != 0 {
-                transform = CGAffineTransform(translationX: tx, y: ty).concatenating(transform)
-            }
-            
-            print("VVideoCompressionEngine: No rotation, scale: \(scale)")
+        }
+
+        // Apply scaling to fit render size
+        let (scaleX, scaleY) = calculateScaleFactors(sourceSize: actualSize, targetSize: CGSize(width: renderWidth, height: renderHeight), rotation: rotation)
+        let scale = min(scaleX, scaleY)
+
+        if scale != 1.0 && scale > 0 {
+            let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
+            transform = transform.concatenating(scaleTransform)
+            print("VVideoCompressionEngine: Applied scale: \(scale)")
+        }
+
+        // Center content if needed
+        let translationX = (CGFloat(renderWidth) - actualSize.width * scale) / 2.0
+        let translationY = (CGFloat(renderHeight) - actualSize.height * scale) / 2.0
+        if translationX != 0 || translationY != 0 {
+            let centerTransform = CGAffineTransform(translationX: translationX, y: translationY)
+            transform = centerTransform.concatenating(transform)
         }
 
         layerInstruction.setTransform(transform, at: .zero)
