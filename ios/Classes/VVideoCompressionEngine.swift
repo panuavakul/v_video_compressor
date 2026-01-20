@@ -48,9 +48,9 @@ class VVideoCompressionEngine {
             let fileSize = self.getFileSize(for: url)
             
             // ORIENTATION FIX: Apply preferred transform to get correct display dimensions
-            let naturalSize = videoTrack?.naturalSize ?? .zero
+            let actualSize = videoTrack?.actualSize ?? .zero
             let preferredTransform = videoTrack?.preferredTransform ?? CGAffineTransform.identity
-            let transformedSize = naturalSize.applying(preferredTransform)
+            let transformedSize = actualSize.applying(preferredTransform)
             let correctedWidth = Int(abs(transformedSize.width))
             let correctedHeight = Int(abs(transformedSize.height))
             
@@ -672,6 +672,32 @@ class VVideoCompressionEngine {
             return URL(fileURLWithPath: path)
         } else {
             return URL(fileURLWithPath: path)
+        }
+    }
+}
+
+extension AVAssetTrack {
+    var actualSize: CGSize {
+        let orientation = getOrientation()
+        switch orientation {
+        case .portrait, .portraitUpsideDown:
+            return CGSize(width: naturalSize.height, height: naturalSize.width)
+        default:
+            return naturalSize
+        }
+    }
+
+    func getOrientation() -> UIInterfaceOrientation {
+        let transform = preferredTransform
+        switch (transform.tx, transform.ty) {
+        case (0, 0):
+            return .landscapeRight
+        case (naturalSize.width, naturalSize.height):
+            return .landscapeLeft
+        case (0, naturalSize.width):
+            return .portraitUpsideDown
+        default:
+            return .portrait
         }
     }
 }
