@@ -1,8 +1,12 @@
 import Foundation
 import AVFoundation
 import UIKit
+import os.log
 
 class VVideoCompressionEngine {
+    
+    // Logger for debug output
+    private static let logger = Logger(subsystem: "com.vvideocompressor", category: "compression")
     
     // Improved constants from iOS Quick Fix
     private static let AUDIO_BITRATE: Int = 128000
@@ -160,38 +164,52 @@ class VVideoCompressionEngine {
             return
         }
         
-        print("VVideoCompressionEngine: Starting compression")
+        Self.logger.debug("Starting compression")
         
         let presetName = getExportPreset(for: config.quality, advanced: config.advanced)
         
-        guard let exportSession = AVAssetExportSession(asset: asset, presetName: presetName) else {
-            callback.onError("Unable to create export session")
-            return
-        }
-        
-        self.exportSession = exportSession
-        exportSession.outputURL = outputURL
-        exportSession.outputFileType = .mp4
-        
-        // iOS Quick Fix: Optimize export settings
-        exportSession.shouldOptimizeForNetworkUse = true
-        exportSession.canPerformMultiplePassesOverSourceMediaData = true
-        
-        // iOS Quick Fix: Add metadata
-        var metadata = [AVMetadataItem]()
-        let item = AVMutableMetadataItem()
-        item.key = AVMetadataKey.commonKeyTitle as NSString
-        item.keySpace = .common
-        item.value = "Compressed with V Video Compressor" as NSString
-        metadata.append(item)
-        exportSession.metadata = metadata
-        
-        // Use Task to handle async composition setup
+        // Use Task to handle async setup (needed for removeAudio composition)
         Task {
             do {
-                if needsAdvancedComposition(config: config) {
-                    print("VVideoCompressionEngine: Applying advanced composition")
-                    try await applyAdvancedComposition(exportSession: exportSession, videoInfo: videoInfo, config: config)
+                // Determine the asset to use for export
+                let exportAsset: AVAsset
+                if config.advanced?.removeAudio == true {
+                    Self.logger.debug("Removing audio - creating video-only composition")
+                    exportAsset = try await self.createVideoOnlyComposition(from: asset)
+                } else {
+                    exportAsset = asset
+                }
+                
+                guard let exportSession = AVAssetExportSession(asset: exportAsset, presetName: presetName) else {
+                    await MainActor.run {
+                        callback.onError("Unable to create export session")
+                    }
+                    return
+                }
+                
+                await MainActor.run {
+                    self.exportSession = exportSession
+                }
+                
+                exportSession.outputURL = outputURL
+                exportSession.outputFileType = .mp4
+                
+                // iOS Quick Fix: Optimize export settings
+                exportSession.shouldOptimizeForNetworkUse = true
+                exportSession.canPerformMultiplePassesOverSourceMediaData = true
+                
+                // iOS Quick Fix: Add metadata
+                var metadata = [AVMetadataItem]()
+                let item = AVMutableMetadataItem()
+                item.key = AVMetadataKey.commonKeyTitle as NSString
+                item.keySpace = .common
+                item.value = "Compressed with V Video Compressor" as NSString
+                metadata.append(item)
+                exportSession.metadata = metadata
+                
+                if self.needsAdvancedComposition(config: config) {
+                    Self.logger.debug("Applying advanced composition")
+                    try await self.applyAdvancedComposition(exportSession: exportSession, asset: asset, videoInfo: videoInfo, config: config)
                 }
                 
                 await MainActor.run {
@@ -239,19 +257,57 @@ class VVideoCompressionEngine {
         degrees = ((degrees % 360) + 360) % 360
         return degrees
     }
+    
+    /// Creates a composition with only the video track (no audio)
+    private func createVideoOnlyComposition(from asset: AVAsset) async throws -> AVMutableComposition {
+        let composition = AVMutableComposition()
+        
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            throw NSError(domain: "VVideoCompression", code: -1, userInfo: [NSLocalizedDescriptionKey: "No video track found"])
+        }
+        
+        let duration = try await asset.load(.duration)
+        
+        guard let compositionVideoTrack = composition.addMutableTrack(
+            withMediaType: .video,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+        ) else {
+            throw NSError(domain: "VVideoCompression", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to create composition track"])
+        }
+        
+        try compositionVideoTrack.insertTimeRange(
+            CMTimeRange(start: .zero, duration: duration),
+            of: videoTrack,
+            at: .zero
+        )
+        
+        // Copy the preferred transform from the original track
+        compositionVideoTrack.preferredTransform = try await videoTrack.load(.preferredTransform)
+        
+        return composition
+    }
 
-    private func applyAdvancedComposition(exportSession: AVAssetExportSession, videoInfo: VVideoInfo, config: VVideoCompressionConfig) async throws {
-        let asset = exportSession.asset
+    private func applyAdvancedComposition(exportSession: AVAssetExportSession, asset originalAsset: AVAsset, videoInfo: VVideoInfo, config: VVideoCompressionConfig) async throws {
+        // Use original asset to get track properties (naturalSize, preferredTransform)
+        // but use exportSession.asset for the layer instruction (may be composition for removeAudio)
+        let exportAsset = exportSession.asset
 
-        let tracks = try await asset.loadTracks(withMediaType: .video)
-        guard let videoTrack = tracks.first else {
-            print("VVideoCompressionEngine: No video track found")
+        let originalTracks = try await originalAsset.loadTracks(withMediaType: .video)
+        guard let originalVideoTrack = originalTracks.first else {
+            Self.logger.error("No video track found in original asset")
+            return
+        }
+        
+        let exportTracks = try await exportAsset.loadTracks(withMediaType: .video)
+        guard let exportVideoTrack = exportTracks.first else {
+            Self.logger.error("No video track found in export asset")
             return
         }
 
-        let naturalSize = try await videoTrack.load(.naturalSize)
-        let preferredTransform = try await videoTrack.load(.preferredTransform)
-        let assetDuration = try await asset.load(.duration)
+        let naturalSize = try await originalVideoTrack.load(.naturalSize)
+        let preferredTransform = try await originalVideoTrack.load(.preferredTransform)
+        let assetDuration = try await exportAsset.load(.duration)
         
         // Detect rotation from the preferredTransform
         let detectedRotation = detectRotationDegrees(from: preferredTransform)
@@ -268,8 +324,8 @@ class VVideoCompressionEngine {
             displayHeight = naturalSize.height
         }
         
-        print("VVideoCompressionEngine: naturalSize=\(naturalSize), detectedRotation=\(detectedRotation)°")
-        print("VVideoCompressionEngine: displaySize=\(displayWidth)x\(displayHeight), isPortrait=\(isPortrait)")
+        Self.logger.debug("naturalSize=\(naturalSize.debugDescription), detectedRotation=\(detectedRotation)°")
+        Self.logger.debug("displaySize=\(displayWidth)x\(displayHeight), isPortrait=\(isPortrait)")
 
         // Determine render size - use custom dimensions or display dimensions
         let targetWidth = config.advanced?.customWidth ?? Int(displayWidth)
@@ -277,7 +333,7 @@ class VVideoCompressionEngine {
         let renderWidth = targetWidth % 16 != 0 ? alignTo16(targetWidth) : targetWidth
         let renderHeight = targetHeight % 16 != 0 ? alignTo16(targetHeight) : targetHeight
         
-        print("VVideoCompressionEngine: renderSize=\(renderWidth)x\(renderHeight)")
+        Self.logger.debug("renderSize=\(renderWidth)x\(renderHeight)")
 
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = CGSize(width: renderWidth, height: renderHeight)
@@ -286,7 +342,7 @@ class VVideoCompressionEngine {
         let instruction = AVMutableVideoCompositionInstruction()
         instruction.timeRange = CMTimeRange(start: .zero, duration: assetDuration)
 
-        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: exportVideoTrack)
 
         // Calculate scale to fit render size while maintaining aspect ratio
         let scaleX = CGFloat(renderWidth) / displayWidth
@@ -311,14 +367,14 @@ class VVideoCompressionEngine {
             let rotate = CGAffineTransform(rotationAngle: .pi / 2)
             let translate = CGAffineTransform(translationX: naturalSize.height, y: 0)
             transform = rotate.concatenating(translate)
-            print("VVideoCompressionEngine: Applied 90° rotation for portrait")
+            Self.logger.debug("Applied 90° rotation for portrait")
             
         case 180:
             // Upside down landscape: rotate 180°, then translate by (W, H)
             let rotate = CGAffineTransform(rotationAngle: .pi)
             let translate = CGAffineTransform(translationX: naturalSize.width, y: naturalSize.height)
             transform = rotate.concatenating(translate)
-            print("VVideoCompressionEngine: Applied 180° rotation")
+            Self.logger.debug("Applied 180° rotation")
             
         case 270:
             // Portrait upside down: rotate 90° CW (= -90° = 270° CCW)
@@ -326,24 +382,24 @@ class VVideoCompressionEngine {
             let rotate = CGAffineTransform(rotationAngle: -.pi / 2)
             let translate = CGAffineTransform(translationX: 0, y: naturalSize.width)
             transform = rotate.concatenating(translate)
-            print("VVideoCompressionEngine: Applied 270° rotation for portrait upside-down")
+            Self.logger.debug("Applied 270° rotation for portrait upside-down")
             
         default:
             // 0° - Landscape, no rotation needed
             transform = CGAffineTransform.identity
-            print("VVideoCompressionEngine: No rotation needed (landscape)")
+            Self.logger.debug("No rotation needed (landscape)")
         }
         
         // Apply scaling
         if scale != 1.0 && scale > 0 {
             transform = transform.concatenating(CGAffineTransform(scaleX: scale, y: scale))
-            print("VVideoCompressionEngine: Applied scale: \(scale)")
+            Self.logger.debug("Applied scale: \(scale)")
         }
         
         // Apply centering
         if offsetX != 0 || offsetY != 0 {
             transform = transform.concatenating(CGAffineTransform(translationX: offsetX, y: offsetY))
-            print("VVideoCompressionEngine: Applied centering offset: (\(offsetX), \(offsetY))")
+            Self.logger.debug("Applied centering offset: (\(offsetX), \(offsetY))")
         }
         
         // Apply user-specified additional rotation (if any)
@@ -359,7 +415,7 @@ class VVideoCompressionEngine {
                 .translatedBy(x: -centerX, y: -centerY)
             
             transform = transform.concatenating(rotateAroundCenter)
-            print("VVideoCompressionEngine: Applied \(userRotation)° user rotation")
+            Self.logger.debug("Applied \(userRotation)° user rotation")
         }
 
         layerInstruction.setTransform(transform, at: .zero)
@@ -368,13 +424,13 @@ class VVideoCompressionEngine {
         if let brightness = config.advanced?.brightness, brightness != 0.0 {
             let opacity = Float(max(0.1, min(1.0, 1.0 + brightness)))
             layerInstruction.setOpacity(opacity, at: .zero)
-            print("VVideoCompressionEngine: Applied brightness: \(brightness)")
+            Self.logger.debug("Applied brightness: \(brightness)")
         }
         
         // iOS Quick Fix: Add contrast and saturation support via Core Image (requires additional implementation)
         if config.advanced?.contrast != nil || config.advanced?.saturation != nil {
             // Note: Full implementation would require Core Image integration
-            print("VVideoCompressionEngine: Color adjustments (contrast/saturation) require Core Image - not fully implemented")
+            Self.logger.warning("Color adjustments (contrast/saturation) require Core Image - not fully implemented")
         }
         
         instruction.layerInstructions = [layerInstruction]
@@ -385,10 +441,10 @@ class VVideoCompressionEngine {
             let startTime = CMTime(seconds: Double(trimStartMs) / 1000.0, preferredTimescale: 600)
             let endTime = CMTime(seconds: Double(trimEndMs) / 1000.0, preferredTimescale: 600)
             exportSession.timeRange = CMTimeRange(start: startTime, duration: CMTimeSubtract(endTime, startTime))
-            print("VVideoCompressionEngine: Applied trimming")
+            Self.logger.debug("Applied trimming")
         }
         
-        print("VVideoCompressionEngine: ORIENTATION FIXED - composition applied successfully!")
+        Self.logger.debug("Composition applied successfully")
     }
     
     private func handleCompressionCompletion(
@@ -427,7 +483,7 @@ class VVideoCompressionEngine {
             // If compression didn't save space (>= 95% of original), use original instead
             let finalURL: URL
             if compressionRatio >= 0.95 {
-                print("VVideoCompressionEngine: Issue #7 - Compressed file (\(compressedSizeBytes)B) is too close to original (\(originalSizeBytes)B). Using original.")
+                Self.logger.info("Compressed file (\(compressedSizeBytes)B) is too close to original (\(originalSizeBytes)B). Using original.")
                 try? FileManager.default.removeItem(at: outputURL)
                 guard let inputURL = createURL(from: videoInfo.path) else {
                     callback.onError("Failed to fallback to original file")
@@ -450,7 +506,7 @@ class VVideoCompressionEngine {
         case .failed:
             try? FileManager.default.removeItem(at: outputURL)
             let errorMessage = getDetailedError(from: exportSession.error)
-            print("VVideoCompressionEngine: Export failed: \(errorMessage)")
+            Self.logger.error("Export failed: \(errorMessage)")
             callback.onError("Compression failed: \(errorMessage)")
             
         case .cancelled:
@@ -530,7 +586,7 @@ class VVideoCompressionEngine {
             )
             
         } catch {
-            print("VVideoCompressionEngine: Failed to generate thumbnail: \(error)")
+            Self.logger.error("Failed to generate thumbnail: \(error.localizedDescription)")
             return nil
         }
     }
