@@ -479,11 +479,17 @@ class VVideoCompressionEngine {
             let compressedSizeBytes = getFileSize(for: outputURL)
             let originalSizeBytes = videoInfo.fileSizeBytes
             let compressionRatio = Float(compressedSizeBytes) / Float(originalSizeBytes)
+            
+            // Check if compressed file is larger than original
+            // BUT only apply this if we're not trimming (original would be wrong length)
+            let hasTrimming = config.advanced?.trimStartMs != nil && config.advanced?.trimEndMs != nil
+            let hasComposition = needsAdvancedComposition(config: config)
+
 
             // If compression didn't save space (>= 95% of original), use original instead
             let finalURL: URL
-            if compressionRatio >= 0.95 {
-                Self.logger.info("Compressed file (\(compressedSizeBytes)B) is too close to original (\(originalSizeBytes)B). Using original.")
+            if !hasTrimming && !hasComposition && compressionRatio >= 0.95 {
+                Self.logger.debug("VVideoCompressionEngine: Compressed file (\(compressedSizeBytes)B) is too close to original (\(originalSizeBytes)B). Using original.")
                 try? FileManager.default.removeItem(at: outputURL)
                 guard let inputURL = createURL(from: videoInfo.path) else {
                     callback.onError("Failed to fallback to original file")
