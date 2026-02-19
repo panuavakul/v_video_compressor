@@ -960,8 +960,10 @@ class VVideoCompressionEngine(private val context: Context) {
                         val originalSizeBytes = videoInfo.fileSizeBytes
                         val compressionRatio = compressedSizeBytes.toFloat() / originalSizeBytes
 
-                        // If compression didn't save space (>= 95% of original), use original instead
-                        val finalFile = if (compressionRatio >= 0.95f) {
+                        // Issue #7 fix: Only use original if no trimming/composition was applied
+                        val hasTrimming = config.advanced?.trimStartMs != null && config.advanced?.trimEndMs != null
+
+                        val finalFile = if (!hasTrimming && compressionRatio >= 0.95f) {
                             println("Issue #7: Compressed file (${compressedSizeBytes}B) is too close to original (${originalSizeBytes}B). Using original.")
                             try {
                                 outputFile.delete()
